@@ -1,0 +1,20 @@
+# List of functions to drop
+
+#
+# usb_pe_drp_sm.c
+#
+
+# SRC only
+
+pe_src_startup_entry
+pe_src_startup_run
+pe_src_startup_exit
+
+pe_src_discovery_entry
+pe_src_discovery_run
+
+pe_src_send_capabilities_entry
+pe_src_send_capabilities_run
+pe_src_send_capabilities_exit
+
+pe_src_negotiate_capability_entry
