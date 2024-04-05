@@ -1322,21 +1322,6 @@ __overridable bool pd_can_charge_from_device(int port, const int pdo_cnt,
 		return true;
 
 	/* [virtual] allow_list */
-	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
-		uint32_t max_ma, max_mv, max_pdo, max_mw, unused;
-
-		/*
-		 * Get max power that the partner offers (not necessarily what
-		 * this board will request)
-		 */
-		pd_find_pdo_index(pdo_cnt, pdos, pd_get_max_voltage(),
-				  &max_pdo);
-		pd_extract_pdo_power(max_pdo, &max_ma, &max_mv, &unused);
-		max_mw = max_ma * max_mv / 1000;
-
-		if (max_mw >= PD_DRP_CHARGE_POWER_MIN)
-			return true;
-	}
 	return false;
 }
 
@@ -1988,14 +1973,6 @@ static void pe_update_src_pdo_flags(int port, int pdo_cnt, uint32_t *pdos)
 	 */
 	if ((pdos[0] & PDO_TYPE_MASK) != PDO_TYPE_FIXED)
 		return;
-
-	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
-		if (pd_can_charge_from_device(port, pdo_cnt, pdos)) {
-			charge_manager_update_dualrole(port, CAP_DEDICATED);
-		} else {
-			charge_manager_update_dualrole(port, CAP_DUALROLE);
-		}
-	}
 }
 
 /*
@@ -3118,9 +3095,6 @@ static void pe_snk_select_capability_run(int port)
 				/* explicit contract is now in place */
 				pe_set_explicit_contract(port);
 
-				if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
-					pe_snk_apply_psnkstdby(port);
-
 				set_state_pe(port, PE_SNK_TRANSITION_SINK);
 
 				return;
@@ -3249,10 +3223,6 @@ static void pe_snk_transition_sink_run(int port)
 			 */
 			pd_set_input_current_limit(port, pe[port].curr_limit,
 						   pe[port].supply_voltage);
-			if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
-				/* Set ceiling based on what's negotiated */
-				charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
-							pe[port].curr_limit);
 			set_state_pe(port, PE_SNK_READY);
 		} else {
 			/*
@@ -3617,10 +3587,6 @@ static void pe_snk_hard_reset_entry(int port)
 		/* Transition Sink's power supply to the new power level */
 		pd_set_input_current_limit(port, pe[port].curr_limit,
 					   pe[port].supply_voltage);
-		if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
-			/* Set ceiling based on what's negotiated */
-			charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
-						pe[port].curr_limit);
 	}
 }
 
@@ -6527,15 +6493,6 @@ void pd_dfp_mode_init(int port)
 	/* Reset the DPM and DP modules to enable alternate mode entry. */
 	dpm_mode_exit_complete(port);
 	dp_init(port);
-
-	if (0/*IS_ENABLED(CONFIG_USB_PD_TBT_COMPAT_MODE)*/)
-		tbt_init(port);
-
-	if (0/*IS_ENABLED(CONFIG_USB_PD_USB4)*/)
-		enter_usb_init(port);
-
-	if (0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_UFP_DP)*/)
-		pd_ufp_set_dp_opos(port, 0);
 }
 
 __maybe_unused void pd_discovery_access_clear(int port,

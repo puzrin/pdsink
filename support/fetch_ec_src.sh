@@ -36,7 +36,7 @@ cp $CP_OPTS $EC_DIR/common/usbc/usb_pe_private.h $SRC_DIR
 cp $CP_OPTS $EC_DIR/common/usbc/usb_pe_drp_sm.c $SRC_DIR
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 $EVAL_MACRO $SRC_DIR/usb_pe_drp_sm.c $LIB_CONFIG
-#spatch --sp-file $HELPERS_DIR/remove_dead_branches.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
+spatch --sp-file $HELPERS_DIR/remove_dead_branches.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 $REMOVE_FUNCTIONS $SRC_DIR/usb_pe_drp_sm.c
 $REMOVE_STATES $SRC_DIR/usb_pe_drp_sm.c
 
