@@ -830,7 +830,7 @@ void pe_run(int port, int evt, int en)
 		 * state once we are listening for the signal and we want to
 		 * make sure to handle it immediately.
 		 */
-		if (IS_ENABLED(CONFIG_USB_PD_REV30) &&
+		if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ &&
 		    PE_CHK_FLAG(port, PE_FLAGS_FAST_ROLE_SWAP_SIGNALED)) {
 			PE_CLR_FLAG(port, PE_FLAGS_FAST_ROLE_SWAP_SIGNALED);
 			set_state_pe(port, PE_FRS_SNK_SRC_START_AMS);
@@ -933,7 +933,7 @@ static void pe_set_frs_enable(int port, int enable)
 	if (!IS_ENABLED(TEST_BUILD))
 		assert(port == TASK_ID_TO_PD_PORT(task_get_current()));
 
-	if (!IS_ENABLED(CONFIG_USB_PD_FRS) || !IS_ENABLED(CONFIG_USB_PD_REV30))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_FRS)*/ || !1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 		return;
 
 	/* Request an FRS change, only if the state has changed */
@@ -960,7 +960,7 @@ void pe_set_explicit_contract(int port)
 	PE_SET_FLAG(port, PE_FLAGS_EXPLICIT_CONTRACT);
 
 	/* Set Rp for collision avoidance */
-	if (IS_ENABLED(CONFIG_USB_PD_REV30))
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 		typec_update_cc(port);
 }
 
@@ -974,7 +974,7 @@ static void pe_invalidate_explicit_contract_frs_untouched(int port)
 	PE_CLR_FLAG(port, PE_FLAGS_EXPLICIT_CONTRACT);
 
 	/* Set Rp for current limit if still attached */
-	if (IS_ENABLED(CONFIG_USB_PD_REV30) && pd_is_connected(port))
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ && pd_is_connected(port))
 		typec_update_cc(port);
 }
 
@@ -1057,7 +1057,7 @@ static int pe_in_spr_contract(int port)
  */
 static bool pe_can_send_sop_prime(int port)
 {
-	if (IS_ENABLED(CONFIG_USBC_VCONN)) {
+	if (0/*IS_ENABLED(CONFIG_USBC_VCONN)*/) {
 		if (PE_CHK_FLAG(port, PE_FLAGS_EXPLICIT_CONTRACT)) {
 			if (prl_get_rev(port, TCPCI_MSG_SOP) == PD_REV20)
 				return tc_is_vconn_src(port) &&
@@ -1233,7 +1233,7 @@ void pe_report_error(int port, enum pe_error e, enum tcpci_msg_type type)
 	     get_state_pe(port) == PE_SRC_DISCOVERY ||
 	     get_state_pe(port) == PE_VCS_CBL_SEND_SOFT_RESET ||
 	     get_state_pe(port) == PE_VDM_IDENTITY_REQUEST_CBL) ||
-	    (IS_ENABLED(CONFIG_USB_PD_DATA_RESET_MSG) &&
+	    (0/*IS_ENABLED(CONFIG_USB_PD_DATA_RESET_MSG)*/ &&
 	     (get_state_pe(port) == PE_UDR_SEND_DATA_RESET ||
 	      get_state_pe(port) == PE_UDR_DATA_RESET_RECEIVED ||
 	      get_state_pe(port) == PE_UDR_TURN_OFF_VCONN ||
@@ -1322,7 +1322,7 @@ __overridable bool pd_can_charge_from_device(int port, const int pdo_cnt,
 		return true;
 
 	/* [virtual] allow_list */
-	if (IS_ENABLED(CONFIG_CHARGE_MANAGER)) {
+	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
 		uint32_t max_ma, max_mv, max_pdo, max_mw, unused;
 
 		/*
@@ -1351,7 +1351,7 @@ void pd_resume_check_pr_swap_needed(int port)
 	    pd_get_power_role(port) == PD_ROLE_SINK &&
 	    !pd_can_charge_from_device(port, pd_get_src_cap_cnt(port),
 				       pd_get_src_caps(port)) &&
-	    (!IS_ENABLED(CONFIG_CHARGE_MANAGER) ||
+	    (!0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/ ||
 	     charge_manager_get_active_charge_port() != port))
 		pd_dpm_request(port, DPM_REQUEST_PR_SWAP);
 }
@@ -1600,7 +1600,7 @@ static bool pe_should_send_data_reset(const int port)
  */
 static bool common_src_snk_dpm_requests(int port)
 {
-	if (IS_ENABLED(CONFIG_USBC_VCONN) &&
+	if (0/*IS_ENABLED(CONFIG_USBC_VCONN)*/ &&
 	    PE_CHK_DPM_REQUEST(port, DPM_REQUEST_VCONN_SWAP)) {
 		enum pd_vconn_role request = pe[port].requested_vconn_role;
 		enum pd_vconn_role current = pd_get_vconn_state(port) ?
@@ -1687,7 +1687,7 @@ static bool common_src_snk_dpm_requests(int port)
 		else
 			set_state_pe(port, PE_DRS_SEND_SWAP);
 		return true;
-	} else if (IS_ENABLED(CONFIG_USB_PD_DATA_RESET_MSG) &&
+	} else if (0/*IS_ENABLED(CONFIG_USB_PD_DATA_RESET_MSG)*/ &&
 		   PE_CHK_DPM_REQUEST(port, DPM_REQUEST_DATA_RESET)) {
 		if (!pe_should_send_data_reset(port)) {
 			PE_CLR_DPM_REQUEST(port, DPM_REQUEST_DATA_RESET);
@@ -1701,7 +1701,7 @@ static bool common_src_snk_dpm_requests(int port)
 		else
 			set_state_pe(port, PE_UDR_SEND_DATA_RESET);
 		return true;
-	} else if (IS_ENABLED(CONFIG_USB_PD_REV30) &&
+	} else if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ &&
 		   PE_CHK_DPM_REQUEST(port, DPM_REQUEST_GET_REVISION)) {
 		if (prl_get_rev(port, TCPCI_MSG_SOP) < PD_REV30) {
 			PE_CLR_DPM_REQUEST(port, DPM_REQUEST_GET_REVISION);
@@ -1710,7 +1710,7 @@ static bool common_src_snk_dpm_requests(int port)
 		pe_set_dpm_curr_request(port, DPM_REQUEST_GET_REVISION);
 		set_state_pe(port, PE_GET_REVISION);
 		return true;
-	} else if (IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES) &&
+	} else if (0/*IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES)*/ &&
 		   PE_CHK_DPM_REQUEST(port, DPM_REQUEST_SEND_ALERT)) {
 		if (prl_get_rev(port, TCPCI_MSG_SOP) < PD_REV30) {
 			PE_CLR_DPM_REQUEST(port, DPM_REQUEST_SEND_ALERT);
@@ -1896,7 +1896,7 @@ static void print_current_state(const int port)
 {
 	const char *mode = "";
 
-	if (IS_ENABLED(CONFIG_USB_PD_REV30) && pe_in_frs_mode(port))
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ && pe_in_frs_mode(port))
 		mode = " FRS-MODE";
 
 	if (IS_ENABLED(USB_PD_DEBUG_LABELS))
@@ -1959,7 +1959,7 @@ static void pe_send_request_msg(int port)
 	pe[port].curr_limit = curr_limit;
 	pe[port].supply_voltage = supply_voltage;
 
-	if (IS_ENABLED(CONFIG_USB_PD_EPR) && pe_snk_in_epr_mode(port)) {
+	if (1/*IS_ENABLED(CONFIG_USB_PD_EPR)*/ && pe_snk_in_epr_mode(port)) {
 		const uint32_t *src_caps = pd_get_src_caps(port);
 
 		tx_emsg[port].len = 8;
@@ -1989,7 +1989,7 @@ static void pe_update_src_pdo_flags(int port, int pdo_cnt, uint32_t *pdos)
 	if ((pdos[0] & PDO_TYPE_MASK) != PDO_TYPE_FIXED)
 		return;
 
-	if (IS_ENABLED(CONFIG_CHARGE_MANAGER)) {
+	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
 		if (pd_can_charge_from_device(port, pdo_cnt, pdos)) {
 			charge_manager_update_dualrole(port, CAP_DEDICATED);
 		} else {
@@ -2056,7 +2056,7 @@ static bool port_try_vconn_swap_on(int port)
  */
 __maybe_unused static bool pe_attempt_port_discovery(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP)*/)
 		assert(0);
 
 	/* TODO(b/272827504): Gate discovery via a DPM request and remove this
@@ -2401,8 +2401,8 @@ static void extended_message_not_supported(int port, uint32_t *payload)
 {
 	uint16_t ext_header = GET_EXT_HEADER(*payload);
 
-	if (IS_ENABLED(CONFIG_USB_PD_REV30) &&
-	    !IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES) &&
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ &&
+	    !0/*IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES)*/ &&
 	    PD_EXT_HEADER_CHUNKED(ext_header) &&
 	    PD_EXT_HEADER_DATA_SIZE(ext_header) >
 		    PD_MAX_EXTENDED_MSG_CHUNK_LEN) {
@@ -2523,7 +2523,7 @@ static void pe_src_ready_run(int port)
 				set_state_pe(port, PE_DRS_EVALUATE_SWAP);
 				return;
 			case PD_CTRL_VCONN_SWAP:
-				if (IS_ENABLED(CONFIG_USBC_VCONN))
+				if (0/*IS_ENABLED(CONFIG_USBC_VCONN)*/)
 					set_state_pe(port,
 						     PE_VCS_EVALUATE_SWAP);
 				else
@@ -2869,7 +2869,7 @@ static void pe_snk_startup_entry(int port)
 	 * - Send a Get_Sink_Cap Message
 	 */
 	if (IS_ENABLED(CONFIG_USB_PD_HOST_CMD) || CONFIG_USB_PD_3A_PORTS > 0 ||
-	    IS_ENABLED(CONFIG_USB_PD_FRS))
+	    0/*IS_ENABLED(CONFIG_USB_PD_FRS)*/)
 		pd_dpm_request(port, DPM_REQUEST_GET_SNK_CAPS);
 
 	/*
@@ -3118,7 +3118,7 @@ static void pe_snk_select_capability_run(int port)
 				/* explicit contract is now in place */
 				pe_set_explicit_contract(port);
 
-				if (IS_ENABLED(CONFIG_CHARGE_MANAGER))
+				if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
 					pe_snk_apply_psnkstdby(port);
 
 				set_state_pe(port, PE_SNK_TRANSITION_SINK);
@@ -3249,7 +3249,7 @@ static void pe_snk_transition_sink_run(int port)
 			 */
 			pd_set_input_current_limit(port, pe[port].curr_limit,
 						   pe[port].supply_voltage);
-			if (IS_ENABLED(CONFIG_CHARGE_MANAGER))
+			if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
 				/* Set ceiling based on what's negotiated */
 				charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
 							pe[port].curr_limit);
@@ -3318,7 +3318,7 @@ static void pe_snk_ready_entry(int port)
 	 */
 	pe_update_wait_and_add_jitter_timer(port);
 
-	if (IS_ENABLED(CONFIG_USB_PD_EPR)) {
+	if (1/*IS_ENABLED(CONFIG_USB_PD_EPR)*/) {
 		if (pe_snk_in_epr_mode(port))
 			pd_timer_enable(port, PE_TIMER_SINK_EPR_KEEP_ALIVE,
 					PD_T_SINK_EPR_KEEP_ALIVE);
@@ -3417,7 +3417,7 @@ static void pe_snk_ready_run(int port)
 						     PE_DRS_EVALUATE_SWAP);
 				return;
 			case PD_CTRL_VCONN_SWAP:
-				if (IS_ENABLED(CONFIG_USBC_VCONN))
+				if (0/*IS_ENABLED(CONFIG_USBC_VCONN)*/)
 					set_state_pe(port,
 						     PE_VCS_EVALUATE_SWAP);
 				else
@@ -3491,7 +3491,7 @@ static void pe_snk_ready_run(int port)
 		/* Inform DPM state machine that PE is set for messages */
 		dpm_set_pe_ready(port, true);
 
-		if (IS_ENABLED(CONFIG_USB_PD_EPR) &&
+		if (1/*IS_ENABLED(CONFIG_USB_PD_EPR)*/ &&
 		    pd_timer_is_expired(port, PE_TIMER_SINK_EPR_KEEP_ALIVE)) {
 			set_state_pe(port, PE_SNK_EPR_KEEP_ALIVE);
 			return;
@@ -3504,7 +3504,7 @@ static void pe_snk_ready_exit(int port)
 	/* Inform DPM state machine that PE is in ready state */
 	dpm_set_pe_ready(port, false);
 
-	if (IS_ENABLED(CONFIG_USB_PD_EPR) && pe_snk_in_epr_mode(port)) {
+	if (1/*IS_ENABLED(CONFIG_USB_PD_EPR)*/ && pe_snk_in_epr_mode(port)) {
 		pd_timer_disable(port, PE_TIMER_SINK_EPR_KEEP_ALIVE);
 	}
 }
@@ -3544,7 +3544,7 @@ static void pe_snk_hard_reset_entry(int port)
 	 * not expected to be encountered by a customer.
 	 */
 	if (IS_ENABLED(CONFIG_BATTERY) && (battery_is_present() == BP_NO) &&
-	    IS_ENABLED(CONFIG_CHARGE_MANAGER) &&
+	    0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/ &&
 	    ((port == charge_manager_get_active_charge_port() ||
 	      (charge_manager_get_active_charge_port() == CHARGE_PORT_NONE))) &&
 	    system_get_reset_flags() & EC_RESET_FLAG_SYSJUMP) {
@@ -3617,7 +3617,7 @@ static void pe_snk_hard_reset_entry(int port)
 		/* Transition Sink's power supply to the new power level */
 		pd_set_input_current_limit(port, pe[port].curr_limit,
 					   pe[port].supply_voltage);
-		if (IS_ENABLED(CONFIG_CHARGE_MANAGER))
+		if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
 			/* Set ceiling based on what's negotiated */
 			charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
 						pe[port].curr_limit);
@@ -3859,8 +3859,8 @@ static void pe_send_not_supported_run(int port)
  */
 __maybe_unused static void pe_chunk_received_entry(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30) ||
-	    IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ ||
+	    0/*IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES)*/)
 		assert(0);
 
 	print_current_state(port);
@@ -3870,8 +3870,8 @@ __maybe_unused static void pe_chunk_received_entry(int port)
 
 __maybe_unused static void pe_chunk_received_run(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30) ||
-	    IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ ||
+	    0/*IS_ENABLED(CONFIG_USB_PD_EXTENDED_MESSAGES)*/)
 		assert(0);
 
 	if (pd_timer_is_expired(port, PE_TIMER_CHUNKING_NOT_SUPPORTED))
@@ -4399,7 +4399,7 @@ static void pe_prs_snk_src_transition_to_off_entry(int port)
 {
 	print_current_state(port);
 
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30) || !pe_in_frs_mode(port))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ || !pe_in_frs_mode(port))
 		tc_snk_power_off(port);
 
 	pd_timer_enable(port, PE_TIMER_PS_SOURCE, PD_T_PS_SOURCE_OFF);
@@ -4466,7 +4466,7 @@ static void pe_prs_snk_src_assert_rp_run(int port)
 {
 	/* Wait until TypeC is in the Attached.SRC state */
 	if (tc_is_attached_src(port)) {
-		if (!IS_ENABLED(CONFIG_USB_PD_REV30) || !pe_in_frs_mode(port)) {
+		if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ || !pe_in_frs_mode(port)) {
 			/* Contract is invalid now */
 			pe_invalidate_explicit_contract(port);
 		}
@@ -4549,7 +4549,7 @@ static void pe_prs_snk_src_send_swap_entry(int port)
 	 *     bringing Vbus to vSafe5.
 	 *     Request the Protocol Layer to send a FR_Swap Message.
 	 */
-	if (IS_ENABLED(CONFIG_USB_PD_REV30)) {
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/) {
 		send_ctrl_msg(port, TCPCI_MSG_SOP,
 			      pe_in_frs_mode(port) ? PD_CTRL_FR_SWAP :
 						     PD_CTRL_PR_SWAP);
@@ -4605,7 +4605,7 @@ static void pe_prs_snk_src_send_swap_run(int port)
 					     PE_PRS_SNK_SRC_TRANSITION_TO_OFF);
 			} else if ((type == PD_CTRL_REJECT) ||
 				   (type == PD_CTRL_WAIT)) {
-				if (IS_ENABLED(CONFIG_USB_PD_REV30))
+				if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 					set_state_pe(
 						port,
 						pe_in_frs_mode(port) ?
@@ -4624,7 +4624,7 @@ static void pe_prs_snk_src_send_swap_run(int port)
 	 *   1) The SenderResponseTimer times out.
 	 */
 	if (pd_timer_is_expired(port, PE_TIMER_SENDER_RESPONSE)) {
-		if (IS_ENABLED(CONFIG_USB_PD_REV30))
+		if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 			set_state_pe(port, pe_in_frs_mode(port) ?
 						   PE_WAIT_FOR_ERROR_RECOVERY :
 						   PE_SNK_READY);
@@ -4638,7 +4638,7 @@ static void pe_prs_snk_src_send_swap_run(int port)
 	 *      has not been received). A soft reset Shall Not be initiated in
 	 *      this case.
 	 */
-	if (IS_ENABLED(CONFIG_USB_PD_REV30) && pe_in_frs_mode(port) &&
+	if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ && pe_in_frs_mode(port) &&
 	    PE_CHK_FLAG(port, PE_FLAGS_PROTOCOL_ERROR)) {
 		PE_CLR_FLAG(port, PE_FLAGS_PROTOCOL_ERROR);
 		set_state_pe(port, PE_WAIT_FOR_ERROR_RECOVERY);
@@ -4655,7 +4655,7 @@ static void pe_prs_snk_src_send_swap_exit(int port)
  */
 __maybe_unused static void pe_frs_snk_src_start_ams_entry(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 		assert(0);
 
 	print_current_state(port);
@@ -4690,7 +4690,7 @@ __maybe_unused static void pe_frs_snk_src_start_ams_entry(int port)
  */
 __maybe_unused static void pe_prs_frs_shared_entry(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 		assert(0);
 
 	/*
@@ -4706,7 +4706,7 @@ __maybe_unused static void pe_prs_frs_shared_entry(int port)
 
 __maybe_unused static void pe_prs_frs_shared_exit(int port)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_REV30))
+	if (!1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/)
 		assert(0);
 
 	/*
@@ -4769,13 +4769,13 @@ static void pe_bist_tx_entry(int port)
 		 */
 		if (tcpc_set_bist_test_mode(port, true) != EC_SUCCESS)
 			CPRINTS("C%d: Failed to enter BIST Test Mode", port);
-	} else if (IS_ENABLED(CONFIG_USB_PD_REV30) &&
+	} else if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ &&
 		   mode == BIST_SHARED_MODE_ENTER) {
 		/* Notify the DPM and return to ready */
 		dpm_bist_shared_mode_enter(port);
 		pe_set_ready_state(port);
 		return;
-	} else if (IS_ENABLED(CONFIG_USB_PD_REV30) &&
+	} else if (1/*IS_ENABLED(CONFIG_USB_PD_REV30)*/ &&
 		   mode == BIST_SHARED_MODE_EXIT) {
 		/* Notify the DPM and return to ready */
 		dpm_bist_shared_mode_exit(port);
@@ -5737,17 +5737,6 @@ static void pe_vdm_response_entry(int port)
 	case CMD_EXIT_MODE:
 		func = svdm_rsp.exit_mode;
 		break;
-#ifdef CONFIG_USB_PD_ALT_MODE_DFP
-	case CMD_ATTENTION:
-		/*
-		 * attention is only SVDM with no response
-		 * (just goodCRC) return zero here.
-		 */
-		dpm_notify_attention(port, PD_HEADER_CNT(rx_emsg[port].header),
-				     rx_payload);
-		pe_set_ready_state(port);
-		return;
-#endif
 	default:
 		CPRINTF("VDO ERR:CMD:%d\n", vdo_cmd);
 	}
@@ -5840,7 +5829,7 @@ static void pe_enter_usb_entry(int port)
 
 	print_current_state(port);
 
-	if (!IS_ENABLED(CONFIG_USB_PD_USB4)) {
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_USB4)*/) {
 		pe_set_ready_state(port);
 		return;
 	}
@@ -5878,7 +5867,7 @@ static void pe_enter_usb_run(int port)
 {
 	enum pe_msg_check msg_check;
 
-	if (!IS_ENABLED(CONFIG_USB_PD_USB4)) {
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_USB4)*/) {
 		pe_set_ready_state(port);
 		return;
 	}
@@ -6111,7 +6100,7 @@ static void pe_dr_src_get_source_cap_run(int port)
 				 * Report dual role power capability to the
 				 * charge manager if present
 				 */
-				if (IS_ENABLED(CONFIG_CHARGE_MANAGER) &&
+				if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/ &&
 				    pd_get_partner_dual_role_power(port))
 					charge_manager_update_dualrole(
 						port, CAP_DUALROLE);
@@ -6539,20 +6528,20 @@ void pd_dfp_mode_init(int port)
 	dpm_mode_exit_complete(port);
 	dp_init(port);
 
-	if (IS_ENABLED(CONFIG_USB_PD_TBT_COMPAT_MODE))
+	if (0/*IS_ENABLED(CONFIG_USB_PD_TBT_COMPAT_MODE)*/)
 		tbt_init(port);
 
-	if (IS_ENABLED(CONFIG_USB_PD_USB4))
+	if (0/*IS_ENABLED(CONFIG_USB_PD_USB4)*/)
 		enter_usb_init(port);
 
-	if (IS_ENABLED(CONFIG_USB_PD_ALT_MODE_UFP_DP))
+	if (0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_UFP_DP)*/)
 		pd_ufp_set_dp_opos(port, 0);
 }
 
 __maybe_unused void pd_discovery_access_clear(int port,
 					      enum tcpci_msg_type type)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP)*/)
 		assert(0);
 
 	atomic_clear_bits(&task_access[port][type], 0xFFFFFFFF);
@@ -6561,7 +6550,7 @@ __maybe_unused void pd_discovery_access_clear(int port,
 __maybe_unused bool pd_discovery_access_validate(int port,
 						 enum tcpci_msg_type type)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP)*/)
 		assert(0);
 
 	return !(task_access[port][type] & ~BIT(task_get_current()));
@@ -6577,7 +6566,7 @@ pd_get_am_discovery_and_notify_access(int port, enum tcpci_msg_type type)
 __maybe_unused const struct pd_discovery *
 pd_get_am_discovery(int port, enum tcpci_msg_type type)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP)*/)
 		assert(0);
 	ASSERT(type < DISCOVERY_TYPE_COUNT);
 
@@ -6586,7 +6575,7 @@ pd_get_am_discovery(int port, enum tcpci_msg_type type)
 
 __maybe_unused void pd_set_dfp_enter_mode_flag(int port, bool set)
 {
-	if (!IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP))
+	if (!0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_DFP)*/)
 		assert(0);
 
 	if (set)

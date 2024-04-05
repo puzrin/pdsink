@@ -1,13 +1,17 @@
 #!/bin/sh
+set -x
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 EC_DIR=$SCRIPT_DIR/ec_tmp
+HELPERS_DIR=$SCRIPT_DIR/helpers
 SRC_DIR=$SCRIPT_DIR/../src
 INCLUDE_DIR=$SCRIPT_DIR/../include
 CP_OPTS=""
-UNIFDEF_OPTS="-m -f $SCRIPT_DIR/unifdef_opts"
+LIB_CONFIG=$SRC_DIR/pd_config.h
+UNIFDEF_OPTS="-m -f $LIB_CONFIG"
 REMOVE_FUNCTIONS=$SCRIPT_DIR/remove_functions.py
 REMOVE_STATES=$SCRIPT_DIR/remove_states.py
+EVAL_MACRO=$SCRIPT_DIR/helpers/eval_IS_ENABLED_macro.py
 
 [ -d $EC_DIR/.git ] || git clone --depth 1 https://chromium.googlesource.com/chromiumos/platform/ec $EC_DIR
 
@@ -31,6 +35,8 @@ cp $CP_OPTS $EC_DIR/common/usbc/usb_pe_private.h $SRC_DIR
 
 cp $CP_OPTS $EC_DIR/common/usbc/usb_pe_drp_sm.c $SRC_DIR
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
+$EVAL_MACRO $SRC_DIR/usb_pe_drp_sm.c $LIB_CONFIG
+#spatch --sp-file $HELPERS_DIR/remove_dead_branches.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 $REMOVE_FUNCTIONS $SRC_DIR/usb_pe_drp_sm.c
 $REMOVE_STATES $SRC_DIR/usb_pe_drp_sm.c
 
