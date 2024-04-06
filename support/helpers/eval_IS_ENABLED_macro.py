@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+
+#
+# Unrolls the IS_ENABLED macro in the .c file based on library config.
+# That simplifies code read and dead branches removal in next passes
+#
+
 import re
 import sys
 
