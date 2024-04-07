@@ -25,6 +25,7 @@
 #undef CONFIG_USB_PD_ALT_MODE_UFP_DP
 #undef CONFIG_USB_PD_ALT_MODE_DFP
 #undef CONFIG_CHARGE_MANAGER
+#undef CONFIG_USB_PD_RESET_MIN_BATT_SOC
 // Seems we can't use this stuff, it's for console only.
 #undef CONFIG_USB_PD_PRL_EVENT_LOG
 

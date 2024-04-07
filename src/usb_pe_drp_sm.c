@@ -1322,6 +1322,21 @@ __overridable bool pd_can_charge_from_device(int port, const int pdo_cnt,
 		return true;
 
 	/* [virtual] allow_list */
+	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
+		uint32_t max_ma, max_mv, max_pdo, max_mw, unused;
+
+		/*
+		 * Get max power that the partner offers (not necessarily what
+		 * this board will request)
+		 */
+		pd_find_pdo_index(pdo_cnt, pdos, pd_get_max_voltage(),
+				  &max_pdo);
+		pd_extract_pdo_power(max_pdo, &max_ma, &max_mv, &unused);
+		max_mw = max_ma * max_mv / 1000;
+
+		if (max_mw >= PD_DRP_CHARGE_POWER_MIN)
+			return true;
+	}
 	return false;
 }
 
@@ -1495,34 +1510,6 @@ static void pe_handle_detach(void)
 }
 DECLARE_HOOK(HOOK_USB_PD_DISCONNECT, pe_handle_detach, HOOK_PRIO_DEFAULT);
 
-#ifdef CONFIG_USB_PD_RESET_MIN_BATT_SOC
-static void pe_update_waiting_batt_flag(void)
-{
-	int i;
-	int batt_soc = usb_get_battery_soc();
-
-	if (batt_soc < CONFIG_USB_PD_RESET_MIN_BATT_SOC ||
-	    battery_get_disconnect_state() != BATTERY_NOT_DISCONNECTED)
-		return;
-
-	for (i = 0; i < board_get_usb_pd_port_count(); i++) {
-		if (PE_CHK_FLAG(i, PE_FLAGS_SNK_WAITING_BATT)) {
-			/*
-			 * Battery has gained sufficient charge to kick off PD
-			 * negotiation and withstand a hard reset. Clear the
-			 * flag and perform Hard Reset.
-			 */
-			PE_CLR_FLAG(i, PE_FLAGS_SNK_WAITING_BATT);
-			CPRINTS("C%d: Battery has enough charge (%d%%) "
-				"to withstand a hard reset",
-				i, batt_soc);
-			pd_dpm_request(i, DPM_REQUEST_HARD_RESET_SEND);
-		}
-	}
-}
-DECLARE_HOOK(HOOK_BATTERY_SOC_CHANGE, pe_update_waiting_batt_flag,
-	     HOOK_PRIO_DEFAULT);
-#endif
 
 /*
  * Private functions
@@ -1973,6 +1960,14 @@ static void pe_update_src_pdo_flags(int port, int pdo_cnt, uint32_t *pdos)
 	 */
 	if ((pdos[0] & PDO_TYPE_MASK) != PDO_TYPE_FIXED)
 		return;
+
+	if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/) {
+		if (pd_can_charge_from_device(port, pdo_cnt, pdos)) {
+			charge_manager_update_dualrole(port, CAP_DEDICATED);
+		} else {
+			charge_manager_update_dualrole(port, CAP_DUALROLE);
+		}
+	}
 }
 
 /*
@@ -2613,6 +2608,9 @@ static void pe_snk_select_capability_run(int port)
 				/* explicit contract is now in place */
 				pe_set_explicit_contract(port);
 
+				if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
+					pe_snk_apply_psnkstdby(port);
+
 				set_state_pe(port, PE_SNK_TRANSITION_SINK);
 
 				return;
@@ -2741,6 +2739,10 @@ static void pe_snk_transition_sink_run(int port)
 			 */
 			pd_set_input_current_limit(port, pe[port].curr_limit,
 						   pe[port].supply_voltage);
+			if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
+				/* Set ceiling based on what's negotiated */
+				charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
+							pe[port].curr_limit);
 			set_state_pe(port, PE_SNK_READY);
 		} else {
 			/*
@@ -3002,9 +3004,6 @@ static void pe_snk_ready_exit(int port)
  */
 static void pe_snk_hard_reset_entry(int port)
 {
-#ifdef CONFIG_USB_PD_RESET_MIN_BATT_SOC
-	int batt_soc;
-#endif
 
 	print_current_state(port);
 
@@ -3060,31 +3059,6 @@ static void pe_snk_hard_reset_entry(int port)
 				      EC_RESET_FLAG_STAY_IN_RO);
 	}
 
-#ifdef CONFIG_USB_PD_RESET_MIN_BATT_SOC
-	/*
-	 * If the battery has not met a configured safe level for hard
-	 * resets, set state to PE_SRC_Disabled as a hard
-	 * reset could brown out the board.
-	 * Note this may mean that high-power chargers will stay at
-	 * 15W until a reset is sent, depending on boot timing.
-	 *
-	 * PE_FLAGS_SNK_WAITING_BATT flags will be cleared and
-	 * PE state will be switched to PE_SNK_Startup when
-	 * battery reaches CONFIG_USB_PD_RESET_MIN_BATT_SOC.
-	 * See pe_update_waiting_batt_flag() for more details.
-	 */
-	batt_soc = usb_get_battery_soc();
-
-	if (batt_soc < CONFIG_USB_PD_RESET_MIN_BATT_SOC ||
-	    battery_get_disconnect_state() != BATTERY_NOT_DISCONNECTED) {
-		PE_SET_FLAG(port, PE_FLAGS_SNK_WAITING_BATT);
-		CPRINTS("C%d: Battery low %d%%! Stay in disabled state "
-			"until battery level reaches %d%%",
-			port, batt_soc, CONFIG_USB_PD_RESET_MIN_BATT_SOC);
-		set_state_pe(port, PE_SRC_DISABLED);
-		return;
-	}
-#endif
 
 	PE_CLR_MASK(port, BIT(PE_FLAGS_SNK_WAIT_CAP_TIMEOUT_FN) |
 				  BIT(PE_FLAGS_PROTOCOL_ERROR_FN));
@@ -3105,6 +3079,10 @@ static void pe_snk_hard_reset_entry(int port)
 		/* Transition Sink's power supply to the new power level */
 		pd_set_input_current_limit(port, pe[port].curr_limit,
 					   pe[port].supply_voltage);
+		if (0/*IS_ENABLED(CONFIG_CHARGE_MANAGER)*/)
+			/* Set ceiling based on what's negotiated */
+			charge_manager_set_ceil(port, CEIL_REQUESTOR_PD,
+						pe[port].curr_limit);
 	}
 }
 
@@ -4410,898 +4388,12 @@ static enum vdm_response_result parse_vdm_response_common(int port)
 	return VDM_RESULT_NO_ACTION;
 }
 
-/**
- * PE_VDM_SEND_REQUEST
- * Shared parent to manage VDM timer and other shared parts of the VDM request
- * process
- */
-static void pe_vdm_send_request_entry(int port)
-{
-	if (pe[port].tx_type == TCPCI_MSG_INVALID) {
-		if (IS_ENABLED(USB_PD_DEBUG_LABELS))
-			CPRINTS("C%d: %s: Tx type expected to be set, "
-				"returning",
-				port, pe_state_names[get_state_pe(port)]);
-		set_state_pe(port, get_last_state_pe(port));
-		return;
-	}
-
-	if ((pe[port].tx_type == TCPCI_MSG_SOP_PRIME ||
-	     pe[port].tx_type == TCPCI_MSG_SOP_PRIME_PRIME) &&
-	    !tc_is_vconn_src(port) &&
-	    /* TODO(b/188578923): Passing true indicates that the PE wants to
-	     * swap to VCONN Source at this time. It would make more sense to
-	     * pass the current value of a PE flag, but the PE no longer
-	     * maintains a flag for this purpose. This logic should move into
-	     * the DPM with the other VCONN policy logic.
-	     */
-	    port_discovery_vconn_swap_policy(port, true)) {
-		if (port_try_vconn_swap_on(port))
-			return;
-	}
-
-	/* All VDM sequences are Interruptible */
-	PE_SET_MASK(port, BIT(PE_FLAGS_LOCALLY_INITIATED_AMS_FN) |
-				  BIT(PE_FLAGS_INTERRUPTIBLE_AMS_FN));
-}
-
-static void pe_vdm_send_request_run(int port)
-{
-	if (PE_CHK_FLAG(port, PE_FLAGS_TX_COMPLETE) &&
-	    pd_timer_is_disabled(port, PE_TIMER_VDM_RESPONSE)) {
-		/* Message was sent */
-		PE_CLR_FLAG(port, PE_FLAGS_TX_COMPLETE);
-
-		/* Start no response timer */
-		/* TODO(b/155890173): Support DPM-supplied timeout */
-		pd_timer_enable(port, PE_TIMER_VDM_RESPONSE, PD_T_VDM_SNDR_RSP);
-	}
-
-	if (PE_CHK_FLAG(port, PE_FLAGS_MSG_DISCARDED)) {
-		/*
-		 * Go back to ready on first AMS message discard
-		 * (ready states will clear the discard flag)
-		 */
-		pe_set_ready_state(port);
-		return;
-	}
-
-	/*
-	 * Check the VDM timer, child will be responsible for processing
-	 * messages and reacting appropriately to unexpected messages.
-	 */
-	if (pd_timer_is_expired(port, PE_TIMER_VDM_RESPONSE)) {
-		CPRINTF("VDM %s Response Timeout\n",
-			pe[port].tx_type == TCPCI_MSG_SOP ? "Port" : "Cable");
-
-		/*
-		 * If timeout expires, extend it and keep waiting.
-		 * Maximum timeout will be approximately 3x the initial,
-		 * spec-compliant timeout (~90ms). This is approximately 2x the
-		 * highest observed time a partner has taken to respond.
-		 */
-		if (!pe[port].vdm_request_extend_timeout) {
-			CPRINTS("No response: extending VDM request timeout");
-			pd_timer_enable(port, PE_TIMER_VDM_RESPONSE,
-					PD_T_VDM_SNDR_RSP * 2);
-			pe[port].vdm_request_extend_timeout = true;
-		} else {
-			/*
-			 * Flag timeout so child state can mark appropriate
-			 * discovery item as failed.
-			 */
-			PE_SET_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT);
-
-			set_state_pe(port, get_last_state_pe(port));
-		}
-	}
-}
-
-static void pe_vdm_send_request_exit(int port)
-{
-	/*
-	 * Clear TX complete in case child called set_state_pe() before parent
-	 * could process transmission
-	 */
-	PE_CLR_FLAG(port, PE_FLAGS_INTERRUPTIBLE_AMS);
-
-	/* Invalidate TX type so it must be set before next call */
-	pe[port].tx_type = TCPCI_MSG_INVALID;
-
-	pd_timer_disable(port, PE_TIMER_VDM_RESPONSE);
-
-	pe[port].vdm_request_extend_timeout = false;
-}
-
 uint32_t pd_compose_svdm_req_header(int port, enum tcpci_msg_type type,
 				    uint16_t svid, int cmd)
 {
 	return VDO(svid, 1,
 		   VDO_SVDM_VERS_MAJOR(pd_get_vdo_ver(port, pe[port].tx_type)) |
 			   VDM_VERS_MINOR | cmd);
-}
-
-/**
- * PE_VDM_IDENTITY_REQUEST_CBL
- * Combination of PE_INIT_PORT_VDM_Identity_Request State specific to the
- * cable and PE_SRC_VDM_Identity_Request State.
- * pe[port].tx_type must be set (to SOP') prior to entry.
- */
-static void pe_vdm_identity_request_cbl_entry(int port)
-{
-	uint32_t *msg = (uint32_t *)tx_emsg[port].buf;
-
-	print_current_state(port);
-
-	if (!pe_can_send_sop_prime(port)) {
-		/*
-		 * The parent state already tried to enable SOP' traffic. If it
-		 * is still disabled, there's nothing left to try.
-		 */
-		pd_set_identity_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		set_state_pe(port, get_last_state_pe(port));
-		return;
-	}
-	msg[0] = pd_compose_svdm_req_header(port, pe[port].tx_type, USB_SID_PD,
-					    CMD_DISCOVER_IDENT);
-
-	tx_emsg[port].len = sizeof(uint32_t);
-
-	send_data_msg(port, pe[port].tx_type, PD_DATA_VENDOR_DEF);
-
-	pe[port].discover_identity_counter++;
-
-	/*
-	 * Valid DiscoverIdentity responses should have at least 4 objects
-	 * (header, ID header, Cert Stat, Product VDO).
-	 */
-	pe[port].vdm_ack_min_data_objects = 4;
-}
-
-static void pe_vdm_identity_request_cbl_run(int port)
-{
-	/* Retrieve the message information */
-	uint32_t *payload = (uint32_t *)rx_emsg[port].buf;
-	int sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-	uint8_t type = PD_HEADER_TYPE(rx_emsg[port].header);
-	uint8_t cnt = PD_HEADER_CNT(rx_emsg[port].header);
-	uint8_t ext = PD_HEADER_EXT(rx_emsg[port].header);
-
-	switch (parse_vdm_response_common(port)) {
-	case VDM_RESULT_WAITING:
-		/*
-		 * The common code didn't parse a message. Handle protocol
-		 * errors; otherwise, continue waiting.
-		 */
-		if (PE_CHK_FLAG(port, PE_FLAGS_PROTOCOL_ERROR)) {
-			/*
-			 * No Good CRC: See section 6.4.4.3.1 - Discover
-			 * Identity.
-			 *
-			 * Discover Identity Command request sent to SOP' Shall
-			 * Not cause a Soft Reset if a GoodCRC Message response
-			 * is not returned since this can indicate a non-PD
-			 * Capable cable.
-			 */
-			PE_CLR_FLAG(port, PE_FLAGS_PROTOCOL_ERROR);
-			set_state_pe(port, get_last_state_pe(port));
-		}
-		return;
-	case VDM_RESULT_NO_ACTION:
-		/*
-		 * If the received message doesn't change the discovery state,
-		 * there is nothing to do but return to the previous ready
-		 * state.
-		 */
-		if (get_last_state_pe(port) == PE_SRC_DISCOVERY &&
-		    (sop != pe[port].tx_type || type != PD_DATA_VENDOR_DEF ||
-		     cnt == 0 || ext != 0)) {
-			/*
-			 * Unexpected non-VDM received: Before an explicit
-			 * contract, an unexpected message shall generate a soft
-			 * reset using the SOP* of the incoming message.
-			 */
-			pe_send_soft_reset(port, sop);
-			return;
-		}
-		break;
-	case VDM_RESULT_ACK:
-		/* PE_INIT_PORT_VDM_Identity_ACKed embedded here */
-		dfp_consume_identity(port, sop, cnt, payload);
-
-		/*
-		 * Note: If port partner runs PD 2.0, we must use PD 2.0 to
-		 * communicate with the cable plug when in an explicit contract.
-		 *
-		 * PD Spec Table 6-2: Revision Interoperability during an
-		 * Explicit Contract
-		 */
-		if (prl_get_rev(port, TCPCI_MSG_SOP) != PD_REV20)
-			set_cable_rev(port,
-				      PD_HEADER_REV(rx_emsg[port].header));
-		break;
-	case VDM_RESULT_NAK:
-		/* PE_INIT_PORT_VDM_IDENTITY_NAKed embedded here */
-		pd_set_identity_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		break;
-	}
-
-	/* Return to calling state (PE_{SRC,SNK}_Ready or PE_SRC_Discovery) */
-	set_state_pe(port, get_last_state_pe(port));
-}
-
-static void pe_vdm_identity_request_cbl_exit(int port)
-{
-	/*
-	 * When cable GoodCRCs but does not reply, down-rev to PD 2.0 and try
-	 * again.
-	 *
-	 * PD 3.0 Rev 2.0 6.2.1.1.5 Specification Revision
-	 *
-	 * "When a Cable Plug does not respond to a Revision 3.0 Discover
-	 * Identity REQ with a Discover Identity ACK or BUSY the Vconn Source
-	 * May repeat steps 1-4 using a Revision 2.0 Discover Identity REQ in
-	 * step 1 before establishing that there is no Cable Plug to
-	 * communicate with"
-	 */
-	if (PE_CHK_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT)) {
-		PE_CLR_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT);
-		set_cable_rev(port, PD_REV20);
-	}
-
-	/*
-	 * 6.6.15 DiscoverIdentityTimer
-	 *
-	 * No more than nDiscoverIdentityCount Discover Identity Messages
-	 * without a GoodCRC Message response Shall be sent. If no GoodCRC
-	 * Message response is received after nDiscoverIdentityCount Discover
-	 * Identity Command requests have been sent by a Port, the Port Shall
-	 * Not send any further SOP’/SOP’’ Messages.
-	 */
-	if (pe[port].discover_identity_counter >= N_DISCOVER_IDENTITY_COUNT)
-		pd_set_identity_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-	else if (pe[port].discover_identity_counter ==
-		 N_DISCOVER_IDENTITY_PD3_0_LIMIT)
-		/*
-		 * Downgrade to PD 2.0 if the partner hasn't replied before
-		 * all retries are exhausted in case the cable is
-		 * non-compliant about GoodCRC-ing higher revisions
-		 */
-		set_cable_rev(port, PD_REV20);
-
-	/*
-	 * Set discover identity timer unless BUSY case already did so.
-	 */
-	if (pd_get_identity_discovery(port, pe[port].tx_type) ==
-		    PD_DISC_NEEDED &&
-	    pd_timer_is_expired(port, PE_TIMER_DISCOVER_IDENTITY)) {
-		/*
-		 * The tDiscoverIdentity timer is used during an explicit
-		 * contract when discovering whether a cable is PD capable.
-		 *
-		 * Pre-contract, slow the rate Discover Identity commands are
-		 * sent. This permits operation with captive cable devices that
-		 * power the SOP' responder from VBUS instead of VCONN.
-		 */
-		pd_timer_enable(port, PE_TIMER_DISCOVER_IDENTITY,
-				pe_is_explicit_contract(port) ?
-					PD_T_DISCOVER_IDENTITY :
-					PE_T_DISCOVER_IDENTITY_NO_CONTRACT);
-	}
-
-	/* Do not attempt further discovery if identity discovery failed. */
-	if (pd_get_identity_discovery(port, pe[port].tx_type) == PD_DISC_FAIL) {
-		pd_set_svids_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		pd_notify_event(port,
-				pe[port].tx_type == TCPCI_MSG_SOP ?
-					PD_STATUS_EVENT_SOP_DISC_DONE :
-					PD_STATUS_EVENT_SOP_PRIME_DISC_DONE);
-	}
-}
-
-/**
- * PE_INIT_PORT_VDM_Identity_Request
- *
- * Specific to SOP requests, as cables require additions for the discover
- * identity counter, must tolerate not receiving a GoodCRC, and need to set the
- * cable revision based on response.
- * pe[port].tx_type must be set (to SOP) prior to entry.
- */
-static void pe_init_port_vdm_identity_request_entry(int port)
-{
-	uint32_t *msg = (uint32_t *)tx_emsg[port].buf;
-
-	print_current_state(port);
-
-	msg[0] = pd_compose_svdm_req_header(port, pe[port].tx_type, USB_SID_PD,
-					    CMD_DISCOVER_IDENT);
-
-	tx_emsg[port].len = sizeof(uint32_t);
-
-	send_data_msg(port, pe[port].tx_type, PD_DATA_VENDOR_DEF);
-
-	/*
-	 * Valid DiscoverIdentity responses should have at least 4 objects
-	 * (header, ID header, Cert Stat, Product VDO).
-	 */
-	pe[port].vdm_ack_min_data_objects = 4;
-}
-
-static void pe_init_port_vdm_identity_request_run(int port)
-{
-	switch (parse_vdm_response_common(port)) {
-	case VDM_RESULT_WAITING:
-		/* If common code didn't parse a message, continue waiting. */
-		return;
-	case VDM_RESULT_NO_ACTION:
-		/*
-		 * If the received message doesn't change the discovery state,
-		 * there is nothing to do but return to the previous ready
-		 * state.
-		 */
-		break;
-	case VDM_RESULT_ACK: {
-		/* Retrieve the message information. */
-		uint32_t *payload = (uint32_t *)rx_emsg[port].buf;
-		int sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-		uint8_t cnt = PD_HEADER_CNT(rx_emsg[port].header);
-
-		/* PE_INIT_PORT_VDM_Identity_ACKed embedded here */
-		dfp_consume_identity(port, sop, cnt, payload);
-
-		break;
-	}
-	case VDM_RESULT_NAK:
-		/* PE_INIT_PORT_VDM_IDENTITY_NAKed embedded here */
-		pd_set_identity_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		break;
-	}
-
-	/* Return to calling state (PE_{SRC,SNK}_Ready) */
-	set_state_pe(port, get_last_state_pe(port));
-}
-
-static void pe_init_port_vdm_identity_request_exit(int port)
-{
-	if (PE_CHK_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT)) {
-		PE_CLR_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT);
-		/*
-		 * Mark failure to respond as discovery failure.
-		 *
-		 * For PD 2.0 partners (6.10.3 Applicability of Structured VDM
-		 * Commands Note 3):
-		 *
-		 * If Structured VDMs are not supported, a Structured VDM
-		 * Command received by a DFP or UFP Shall be Ignored.
-		 */
-		pd_set_identity_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-	}
-
-	/* Do not attempt further discovery if identity discovery failed. */
-	if (pd_get_identity_discovery(port, pe[port].tx_type) == PD_DISC_FAIL) {
-		pd_set_svids_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		pd_notify_event(port,
-				pe[port].tx_type == TCPCI_MSG_SOP ?
-					PD_STATUS_EVENT_SOP_DISC_DONE :
-					PD_STATUS_EVENT_SOP_PRIME_DISC_DONE);
-	}
-}
-
-/**
- * PE_INIT_VDM_SVIDs_Request
- *
- * Used for SOP and SOP' requests, selected by pe[port].tx_type prior to entry.
- */
-static void pe_init_vdm_svids_request_entry(int port)
-{
-	uint32_t *msg = (uint32_t *)tx_emsg[port].buf;
-
-	print_current_state(port);
-
-	if (pe[port].tx_type == TCPCI_MSG_SOP_PRIME &&
-	    !pe_can_send_sop_prime(port)) {
-		/*
-		 * The parent state already tried to enable SOP' traffic. If it
-		 * is still disabled, there's nothing left to try.
-		 */
-		pd_set_svids_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		set_state_pe(port, get_last_state_pe(port));
-		return;
-	}
-
-	msg[0] = pd_compose_svdm_req_header(port, pe[port].tx_type, USB_SID_PD,
-					    CMD_DISCOVER_SVID);
-
-	tx_emsg[port].len = sizeof(uint32_t);
-
-	send_data_msg(port, pe[port].tx_type, PD_DATA_VENDOR_DEF);
-
-	/*
-	 * Valid Discover SVIDs ACKs should have at least 2 objects (VDM header
-	 * and at least 1 SVID VDO).
-	 */
-	pe[port].vdm_ack_min_data_objects = 2;
-}
-
-static void pe_init_vdm_svids_request_run(int port)
-{
-	switch (parse_vdm_response_common(port)) {
-	case VDM_RESULT_WAITING:
-		/* If common code didn't parse a message, continue waiting. */
-		return;
-	case VDM_RESULT_NO_ACTION:
-		/*
-		 * If the received message doesn't change the discovery state,
-		 * there is nothing to do but return to the previous ready
-		 * state.
-		 */
-		break;
-	case VDM_RESULT_ACK: {
-		/* Retrieve the message information. */
-		uint32_t *payload = (uint32_t *)rx_emsg[port].buf;
-		int sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-		uint8_t cnt = PD_HEADER_CNT(rx_emsg[port].header);
-
-		/* PE_INIT_VDM_SVIDs_ACKed embedded here */
-		dfp_consume_svids(port, sop, cnt, payload);
-		break;
-	}
-	case VDM_RESULT_NAK:
-		/* PE_INIT_VDM_SVIDs_NAKed embedded here */
-		pd_set_svids_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-		break;
-	}
-
-	/* Return to calling state (PE_{SRC,SNK}_Ready) */
-	set_state_pe(port, get_last_state_pe(port));
-}
-
-static void pe_init_vdm_svids_request_exit(int port)
-{
-	if (PE_CHK_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT)) {
-		PE_CLR_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT);
-		/*
-		 * Mark failure to respond as discovery failure.
-		 *
-		 * For PD 2.0 partners (6.10.3 Applicability of Structured VDM
-		 * Commands Note 3):
-		 *
-		 * If Structured VDMs are not supported, a Structured VDM
-		 * Command received by a DFP or UFP Shall be Ignored.
-		 */
-		pd_set_svids_discovery(port, pe[port].tx_type, PD_DISC_FAIL);
-	}
-
-	/* If SVID discovery failed, discovery is done at this point */
-	if (pd_get_svids_discovery(port, pe[port].tx_type) == PD_DISC_FAIL)
-		pd_notify_event(port,
-				pe[port].tx_type == TCPCI_MSG_SOP ?
-					PD_STATUS_EVENT_SOP_DISC_DONE :
-					PD_STATUS_EVENT_SOP_PRIME_DISC_DONE);
-}
-
-/**
- * PE_INIT_VDM_Modes_Request
- *
- * Used for SOP and SOP' requests, selected by pe[port].tx_type prior to entry.
- */
-static void pe_init_vdm_modes_request_entry(int port)
-{
-	uint32_t *msg = (uint32_t *)tx_emsg[port].buf;
-	const struct svid_mode_data *mode_data =
-		pd_get_next_mode(port, pe[port].tx_type);
-	uint16_t svid;
-	/*
-	 * The caller should have checked that there was something to discover
-	 * before entering this state.
-	 */
-	assert(mode_data);
-	assert(mode_data->discovery == PD_DISC_NEEDED);
-	svid = mode_data->svid;
-
-	print_current_state(port);
-
-	if (pe[port].tx_type == TCPCI_MSG_SOP_PRIME &&
-	    !pe_can_send_sop_prime(port)) {
-		/*
-		 * The parent state already tried to enable SOP' traffic. If it
-		 * is still disabled, there's nothing left to try.
-		 */
-		pd_set_modes_discovery(port, pe[port].tx_type, svid,
-				       PD_DISC_FAIL);
-		set_state_pe(port, get_last_state_pe(port));
-		return;
-	}
-
-	msg[0] = pd_compose_svdm_req_header(port, pe[port].tx_type, svid,
-					    CMD_DISCOVER_MODES);
-
-	tx_emsg[port].len = sizeof(uint32_t);
-
-	send_data_msg(port, pe[port].tx_type, PD_DATA_VENDOR_DEF);
-
-	/*
-	 * Valid Discover Modes responses should have at least 2 objects (VDM
-	 * header and at least 1 mode VDO).
-	 */
-	pe[port].vdm_ack_min_data_objects = 2;
-}
-
-static void pe_init_vdm_modes_request_run(int port)
-{
-	const struct svid_mode_data *mode_data;
-	uint16_t requested_svid;
-
-	mode_data = pd_get_next_mode(port, pe[port].tx_type);
-
-	assert(mode_data);
-	assert(mode_data->discovery == PD_DISC_NEEDED);
-	requested_svid = mode_data->svid;
-
-	switch (parse_vdm_response_common(port)) {
-	case VDM_RESULT_WAITING:
-		/* If common code didn't parse a message, continue waiting. */
-		return;
-	case VDM_RESULT_NO_ACTION:
-		/*
-		 * If the received message doesn't change the discovery state,
-		 * there is nothing to do but return to the previous ready
-		 * state.
-		 */
-		break;
-	case VDM_RESULT_ACK: {
-		/* Retrieve the message information. */
-		uint32_t *payload = (uint32_t *)rx_emsg[port].buf;
-		int sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-		uint8_t cnt = PD_HEADER_CNT(rx_emsg[port].header);
-
-		/*
-		 * Accept ACK if the request and response SVIDs are equal;
-		 * otherwise, treat this as a NAK of the request SVID.
-		 */
-		/* PE_INIT_VDM_Modes_ACKed embedded here */
-		dfp_consume_modes(port, sop, cnt, payload);
-		break;
-	}
-	case VDM_RESULT_NAK:
-		/* PE_INIT_VDM_Modes_NAKed embedded here */
-		pd_set_modes_discovery(port, pe[port].tx_type, requested_svid,
-				       PD_DISC_FAIL);
-		break;
-	}
-
-	/* Return to calling state (PE_{SRC,SNK}_Ready) */
-	set_state_pe(port, get_last_state_pe(port));
-}
-
-static void pe_init_vdm_modes_request_exit(int port)
-{
-	if (pd_get_modes_discovery(port, pe[port].tx_type) != PD_DISC_NEEDED)
-		/* Mode discovery done, notify the AP */
-		pd_notify_event(port,
-				pe[port].tx_type == TCPCI_MSG_SOP ?
-					PD_STATUS_EVENT_SOP_DISC_DONE :
-					PD_STATUS_EVENT_SOP_PRIME_DISC_DONE);
-}
-
-/**
- * PE_VDM_REQUEST_DPM
- *
- * Makes a VDM request with contents and SOP* type previously set up by the DPM.
- */
-
-static void pe_vdm_request_dpm_entry(int port)
-{
-	print_current_state(port);
-
-	if ((pe[port].tx_type == TCPCI_MSG_SOP_PRIME ||
-	     pe[port].tx_type == TCPCI_MSG_SOP_PRIME_PRIME) &&
-	    !pe_can_send_sop_prime(port)) {
-		/*
-		 * The parent state already tried to enable SOP' traffic. If it
-		 * is still disabled, there's nothing left to try.
-		 */
-		dpm_vdm_naked(port, pe[port].tx_type,
-			      PD_VDO_VID(pe[port].vdm_data[0]),
-			      PD_VDO_CMD(pe[port].vdm_data[0]), 0);
-		set_state_pe(port, get_last_state_pe(port));
-		return;
-	}
-
-	/* Copy Vendor Data Objects (VDOs) into message buffer */
-	if (pe[port].vdm_cnt > 0) {
-		/* Copy data after header */
-		memcpy(&tx_emsg[port].buf, (uint8_t *)pe[port].vdm_data,
-		       pe[port].vdm_cnt * 4);
-		/* Update len with the number of VDO bytes */
-		tx_emsg[port].len = pe[port].vdm_cnt * 4;
-	}
-
-	send_data_msg(port, pe[port].tx_type, PD_DATA_VENDOR_DEF);
-
-	/*
-	 * In general, valid VDM ACKs must have a VDM header. Other than that,
-	 * ACKs must be validated based on the command and SVID.
-	 */
-	pe[port].vdm_ack_min_data_objects = 1;
-}
-
-static void pe_vdm_request_dpm_run(int port)
-{
-	uint32_t vdm_hdr;
-
-	switch (parse_vdm_response_common(port)) {
-	case VDM_RESULT_WAITING:
-		/*
-		 * USB-PD 3.0 Rev 1.1 - 6.4.4.2.5
-		 * Structured VDM command consists of a command request and a
-		 * command response (ACK, NAK, or BUSY). An exception is made
-		 * for the Attention command which shall have no response.
-		 *
-		 * Since Attention commands do not have an expected reply,
-		 * the SVDM command is complete once the Attention command
-		 * transmit is complete.
-		 */
-		vdm_hdr = pe[port].vdm_data[0];
-		if (PD_VDO_SVDM(vdm_hdr) &&
-		    (PD_VDO_CMD(vdm_hdr) == CMD_ATTENTION)) {
-			if (PE_CHK_FLAG(port, PE_FLAGS_TX_COMPLETE)) {
-				PE_CLR_FLAG(port, PE_FLAGS_TX_COMPLETE);
-				break;
-			}
-		}
-		/*
-		 * If common code didn't parse a message, and the VDM
-		 * just sent was not an Attention message, then continue
-		 * waiting.
-		 */
-		return;
-	case VDM_RESULT_NO_ACTION:
-		/*
-		 * If the received message doesn't change the discovery state,
-		 * there is nothing to do but return to the previous ready
-		 * state. This includes Attention commands which have no
-		 * expected SVDM response.
-		 */
-		break;
-	case VDM_RESULT_ACK: {
-		/* Retrieve the message information. */
-		uint32_t *payload = (uint32_t *)rx_emsg[port].buf;
-		int sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-		uint8_t cnt = PD_HEADER_CNT(rx_emsg[port].header);
-
-		/*
-		 * PE initiator VDM-ACKed state for requested VDM, like
-		 * PE_INIT_VDM_FOO_ACKed, embedded here.
-		 */
-		dpm_vdm_acked(port, sop, cnt, payload);
-		break;
-	}
-	case VDM_RESULT_NAK: {
-		uint32_t vdm_header = 0;
-
-		/*
-		 * PE initiator VDM-NAKed state for requested VDM, like
-		 * PE_INIT_VDM_FOO_NAKed, embedded here.
-		 */
-
-		/*
-		 * Because Not Supported messages or response timeouts are
-		 * treated as NAKs, there may not be a NAK message to parse.
-		 * Extract the needed information from the sent VDM, and send
-		 * the NAK if present.
-		 */
-		if (PD_HEADER_TYPE(rx_emsg[port].header) ==
-			    PD_DATA_VENDOR_DEF &&
-		    PD_HEADER_CNT(rx_emsg[port].header) > 0)
-			vdm_header = ((uint32_t *)rx_emsg[port].buf)[0];
-
-		dpm_vdm_naked(port, pe[port].tx_type,
-			      PD_VDO_VID(pe[port].vdm_data[0]),
-			      PD_VDO_CMD(pe[port].vdm_data[0]), vdm_header);
-		break;
-	}
-	}
-
-	/* Return to calling state (PE_{SRC,SNK}_Ready) */
-	set_state_pe(port, get_last_state_pe(port));
-}
-
-static void pe_vdm_request_dpm_exit(int port)
-{
-	if (PE_CHK_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT)) {
-		PE_CLR_FLAG(port, PE_FLAGS_VDM_REQUEST_TIMEOUT);
-
-		/*
-		 * Mark failure to respond as discovery failure.
-		 *
-		 * For PD 2.0 partners (6.10.3 Applicability of Structured VDM
-		 * Commands Note 3):
-		 *
-		 * If Structured VDMs are not supported, a Structured VDM
-		 * Command received by a DFP or UFP Shall be Ignored.
-		 */
-		dpm_vdm_naked(port, pe[port].tx_type,
-			      PD_VDO_VID(pe[port].vdm_data[0]),
-			      PD_VDO_CMD(pe[port].vdm_data[0]), 0);
-	}
-
-	/*
-	 * Force Tx type to be reset before reentering a VDM state, unless the
-	 * current VDM request will be resumed.
-	 */
-	if (!PE_CHK_FLAG(port, PE_FLAGS_VDM_REQUEST_CONTINUE))
-		pe[port].tx_type = TCPCI_MSG_INVALID;
-}
-
-/**
- * PE_VDM_Response
- */
-static void pe_vdm_response_entry(int port)
-{
-	int vdo_len = 0;
-	uint32_t *rx_payload;
-	uint32_t *tx_payload;
-	uint8_t vdo_cmd;
-	svdm_rsp_func func = NULL;
-
-	print_current_state(port);
-
-	/* This is an Interruptible AMS */
-	PE_SET_FLAG(port, PE_FLAGS_INTERRUPTIBLE_AMS);
-
-	/* Get the message */
-	rx_payload = (uint32_t *)rx_emsg[port].buf;
-
-	/* Extract VDM command from the VDM header */
-	vdo_cmd = PD_VDO_CMD(rx_payload[0]);
-	/* This must be a command request to proceed further */
-	if (PD_VDO_CMDT(rx_payload[0]) != CMDT_INIT) {
-		CPRINTF("ERR:CMDT:%d:%d\n", PD_VDO_CMDT(rx_payload[0]),
-			vdo_cmd);
-
-		pe_set_ready_state(port);
-		return;
-	}
-
-	tx_payload = (uint32_t *)tx_emsg[port].buf;
-	/*
-	 * Designed in TCPMv1, svdm_response functions use same
-	 * buffer to take received data and overwrite with response
-	 * data. To work with this interface, here copy rx data to
-	 * tx buffer and pass tx_payload to func.
-	 * TODO(b/166455363): change the interface to pass both rx
-	 * and tx buffer.
-	 *
-	 * The SVDM header is dependent on both VDM command request being
-	 * replied to and the result of response function. The SVDM command
-	 * message is copied into tx_payload. tx_payload[0] is the VDM header
-	 * for the response message. The SVDM response function takes the role
-	 * of the DPM layer and will indicate the response type (ACK/NAK/BUSY)
-	 * by its return value (vdo_len)
-	 *    vdo_len > 0  --> ACK
-	 *    vdo_len == 0 --> NAK
-	 *    vdo_len < 0  --> BUSY
-	 */
-	memcpy(tx_payload, rx_payload, PD_HEADER_CNT(rx_emsg[port].header) * 4);
-	/*
-	 * Clear fields in SVDM response message that will be set based on the
-	 * result of the svdm response function.
-	 */
-	tx_payload[0] &= ~VDO_CMDT_MASK;
-	tx_payload[0] &= ~VDO_SVDM_VERS_MASK;
-
-	/* Add SVDM structured version being used */
-	tx_payload[0] |=
-		VDO_SVDM_VERS_MAJOR(pd_get_vdo_ver(port, TCPCI_MSG_SOP));
-	tx_payload[0] |= VDM_VERS_MINOR;
-
-	/* Use VDM command to select the response handler function */
-	switch (vdo_cmd) {
-	case CMD_DISCOVER_IDENT:
-		func = svdm_rsp.identity;
-		break;
-	case CMD_DISCOVER_SVID:
-		func = svdm_rsp.svids;
-		break;
-	case CMD_DISCOVER_MODES:
-		func = svdm_rsp.modes;
-		break;
-	case CMD_ENTER_MODE:
-		func = svdm_rsp.enter_mode;
-		break;
-	case CMD_DP_STATUS:
-		if (svdm_rsp.amode)
-			func = svdm_rsp.amode->status;
-		break;
-	case CMD_DP_CONFIG:
-		if (svdm_rsp.amode)
-			func = svdm_rsp.amode->config;
-		break;
-	case CMD_EXIT_MODE:
-		func = svdm_rsp.exit_mode;
-		break;
-	default:
-		CPRINTF("VDO ERR:CMD:%d\n", vdo_cmd);
-	}
-
-	/*
-	 * If the port partner is PD_REV20 and our data role is DFP, we must
-	 * reply to any SVDM command with a NAK. If the SVDM was an Attention
-	 * command, it does not have a response, and exits the function above.
-	 */
-	if (func && (prl_get_rev(port, TCPCI_MSG_SOP) != PD_REV20 ||
-		     pe[port].data_role == PD_ROLE_UFP)) {
-		/*
-		 * Execute SVDM response function selected above and set the
-		 * correct response type in the VDM header.
-		 */
-		vdo_len = func(port, tx_payload);
-		if (vdo_len > 0) {
-			tx_payload[0] |= VDO_CMDT(CMDT_RSP_ACK);
-			/*
-			 * If command response is an ACK and if the command was
-			 * either enter/exit mode, then update the PE modal flag
-			 * accordingly and cancel any DFP swap attempts.
-			 */
-			if (vdo_cmd == CMD_ENTER_MODE) {
-				PE_CLR_FLAG(port, PE_FLAGS_DR_SWAP_TO_DFP);
-				PE_SET_FLAG(port, PE_FLAGS_MODAL_OPERATION);
-			}
-			if (vdo_cmd == CMD_EXIT_MODE)
-				PE_CLR_FLAG(port, PE_FLAGS_MODAL_OPERATION);
-		} else if (!vdo_len) {
-			tx_payload[0] |= VDO_CMDT(CMDT_RSP_NAK);
-			vdo_len = 1;
-		} else {
-			tx_payload[0] |= VDO_CMDT(CMDT_RSP_BUSY);
-			vdo_len = 1;
-		}
-	} else {
-		/*
-		 * Received at VDM command which is not supported.  PD 2.0 may
-		 * NAK or ignore the message (see TD.PD.VNDI.E1. VDM Identity
-		 * steps), but PD 3.0 must send Not_Supported (PD 3.0 Ver 2.0 +
-		 * ECNs 2020-12-10 Table 6-64 Response to an incoming
-		 * VDM or TD.PD.VNDI3.E3 VDM Identity steps)
-		 */
-		if (prl_get_rev(port, TCPCI_MSG_SOP) == PD_REV30) {
-			set_state_pe(port, PE_SEND_NOT_SUPPORTED);
-			return;
-		}
-		tx_payload[0] |= VDO_CMDT(CMDT_RSP_NAK);
-		vdo_len = 1;
-	}
-
-	/* Send response message. Note len is in bytes, not VDO objects */
-	tx_emsg[port].len = (vdo_len * sizeof(uint32_t));
-	send_data_msg(port, TCPCI_MSG_SOP, PD_DATA_VENDOR_DEF);
-}
-
-static void pe_vdm_response_run(int port)
-{
-	/*
-	 * This state waits for a VDM response message to be sent. Return to the
-	 * ready state once the message has been sent, a protocol error was
-	 * detected, or if the VDM response msg was discarded based on being
-	 * interrupted by another rx message. Since VDM sequences are AMS
-	 * interruptible, there is no need to soft reset regardless of exit
-	 * reason.
-	 */
-	if (PE_CHK_FLAG(port, PE_FLAGS_TX_COMPLETE) ||
-	    PE_CHK_FLAG(port, PE_FLAGS_PROTOCOL_ERROR) ||
-	    PE_CHK_FLAG(port, PE_FLAGS_MSG_DISCARDED)) {
-		PE_CLR_MASK(port, BIT(PE_FLAGS_TX_COMPLETE_FN) |
-					  BIT(PE_FLAGS_PROTOCOL_ERROR_FN) |
-					  BIT(PE_FLAGS_MSG_DISCARDED_FN));
-
-		pe_set_ready_state(port);
-	}
-}
-
-static void pe_vdm_response_exit(int port)
-{
-	PE_CLR_FLAG(port, PE_FLAGS_INTERRUPTIBLE_AMS);
 }
 
 /**
@@ -6011,6 +5103,15 @@ void pd_dfp_mode_init(int port)
 	/* Reset the DPM and DP modules to enable alternate mode entry. */
 	dpm_mode_exit_complete(port);
 	dp_init(port);
+
+	if (0/*IS_ENABLED(CONFIG_USB_PD_TBT_COMPAT_MODE)*/)
+		tbt_init(port);
+
+	if (0/*IS_ENABLED(CONFIG_USB_PD_USB4)*/)
+		enter_usb_init(port);
+
+	if (0/*IS_ENABLED(CONFIG_USB_PD_ALT_MODE_UFP_DP)*/)
+		pd_ufp_set_dp_opos(port, 0);
 }
 
 __maybe_unused void pd_discovery_access_clear(int port,
