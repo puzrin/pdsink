@@ -1021,38 +1021,6 @@ static int pe_in_spr_contract(int port)
 }
 
 /*
- * Determine if this port may communicate with the cable plug.
- *
- * In both PD 2.0 and 3.0 (2.5.4 SOP'/SOP'' Communication with Cable Plugs):
- *
- * When no Contract or an Implicit Contract is in place (e.g. after a Power Role
- * Swap or Fast Role Swap) only the Source port that is supplying Vconn is
- * allowed to send packets to a Cable Plug
- *
- * When in an explicit contract, PD 3.0 requires that a port be Vconn source to
- * communicate with the cable.  PD 2.0 requires that a port be DFP to
- * communicate with the cable plug, with an implication that it must be Vconn
- * source as well (6.3.11 VCONN_Swap Message).
- */
-static bool pe_can_send_sop_prime(int port)
-{
-	if (0/*IS_ENABLED(CONFIG_USBC_VCONN)*/) {
-		if (PE_CHK_FLAG(port, PE_FLAGS_EXPLICIT_CONTRACT)) {
-			if (prl_get_rev(port, TCPCI_MSG_SOP) == PD_REV20)
-				return tc_is_vconn_src(port) &&
-				       pe[port].data_role == PD_ROLE_DFP;
-			else
-				return tc_is_vconn_src(port);
-		} else {
-			return tc_is_vconn_src(port) &&
-			       pe[port].power_role == PD_ROLE_SOURCE;
-		}
-	} else {
-		return false;
-	}
-}
-
-/*
  * Determine if this port may send the given VDM type
  *
  * For PD 2.0, "Only the DFP Shall be an Initrator of Structured VDMs except for
@@ -1671,63 +1639,6 @@ static bool common_src_snk_dpm_requests(int port)
 		set_state_pe(port, PE_SEND_ALERT);
 		return true;
 	}
-
-	return false;
-}
-
-/*
- * Handle source-specific DPM requests
- *
- * Returns true if state was set and calling run state should now return.
- */
-static bool source_dpm_requests(int port)
-{
-	/*
-	 * Ignore sink-specific request:
-	 *   DPM_REQUEST_NEW_POWER_LEVEL
-	 *   DPM_REQUEST_SOURCE_CAP
-	 *   DPM_REQUEST_FRS_DET_ENABLE
-	 *   DPM_REQURST_FRS_DET_DISABLE
-	 */
-	PE_CLR_DPM_REQUEST(port, DPM_REQUEST_NEW_POWER_LEVEL |
-					 DPM_REQUEST_SOURCE_CAP |
-					 DPM_REQUEST_FRS_DET_ENABLE |
-					 DPM_REQUEST_FRS_DET_DISABLE);
-
-	if (!pe[port].dpm_request)
-		return false;
-
-	PE_SET_FLAG(port, PE_FLAGS_LOCALLY_INITIATED_AMS);
-
-	if (PE_CHK_DPM_REQUEST(port, DPM_REQUEST_PR_SWAP)) {
-		pe_set_dpm_curr_request(port, DPM_REQUEST_PR_SWAP);
-		set_state_pe(port, PE_PRS_SRC_SNK_SEND_SWAP);
-		return true;
-	} else if (PE_CHK_DPM_REQUEST(port, DPM_REQUEST_GOTO_MIN)) {
-		pe_set_dpm_curr_request(port, DPM_REQUEST_GOTO_MIN);
-		set_state_pe(port, PE_SRC_TRANSITION_SUPPLY);
-		return true;
-	} else if (PE_CHK_DPM_REQUEST(port, DPM_REQUEST_SRC_CAP_CHANGE)) {
-		pe_set_dpm_curr_request(port, DPM_REQUEST_SRC_CAP_CHANGE);
-		set_state_pe(port, PE_SRC_SEND_CAPABILITIES);
-		return true;
-	} else if (PE_CHK_DPM_REQUEST(port, DPM_REQUEST_GET_SRC_CAPS)) {
-		pe_set_dpm_curr_request(port, DPM_REQUEST_GET_SRC_CAPS);
-		set_state_pe(port, PE_DR_SRC_GET_SOURCE_CAP);
-		return true;
-	} else if (PE_CHK_DPM_REQUEST(port, DPM_REQUEST_SEND_PING)) {
-		pe_set_dpm_curr_request(port, DPM_REQUEST_SEND_PING);
-		set_state_pe(port, PE_SRC_PING);
-		return true;
-	} else if (common_src_snk_dpm_requests(port)) {
-		return true;
-	}
-
-	const uint32_t dpm_request = pe[port].dpm_request;
-
-	CPRINTF("Unhandled DPM Request %x received\n", dpm_request);
-	PE_CLR_DPM_REQUEST(port, dpm_request);
-	PE_CLR_FLAG(port, PE_FLAGS_LOCALLY_INITIATED_AMS);
 
 	return false;
 }
@@ -4296,75 +4207,6 @@ static void pe_wait_for_error_recovery_entry(int port)
 static void pe_wait_for_error_recovery_run(int port)
 {
 	/* Stay here until error recovery is complete */
-}
-
-static enum vdm_response_result parse_vdm_response_common(int port)
-{
-	/* Retrieve the message information */
-	uint32_t *payload;
-	int sop;
-	uint8_t type;
-	uint8_t cnt;
-	uint8_t ext;
-
-	if (!PE_CHK_REPLY(port))
-		return VDM_RESULT_WAITING;
-	PE_CLR_FLAG(port, PE_FLAGS_MSG_RECEIVED);
-
-	payload = (uint32_t *)rx_emsg[port].buf;
-	sop = PD_HEADER_GET_SOP(rx_emsg[port].header);
-	type = PD_HEADER_TYPE(rx_emsg[port].header);
-	cnt = PD_HEADER_CNT(rx_emsg[port].header);
-	ext = PD_HEADER_EXT(rx_emsg[port].header);
-
-	if (sop == pe[port].tx_type && type == PD_DATA_VENDOR_DEF && cnt >= 1 &&
-	    ext == 0) {
-		if (PD_VDO_CMDT(payload[0]) == CMDT_RSP_ACK &&
-		    cnt >= pe[port].vdm_ack_min_data_objects) {
-			/* Handle ACKs in state-specific code. */
-			return VDM_RESULT_ACK;
-		} else if (PD_VDO_CMDT(payload[0]) == CMDT_RSP_NAK) {
-			/* Handle NAKs in state-specific code. */
-			return VDM_RESULT_NAK;
-		} else if (PD_VDO_CMDT(payload[0]) == CMDT_RSP_BUSY) {
-			/*
-			 * Don't fill in the discovery field so we re-probe in
-			 * tVDMBusy
-			 */
-			CPRINTS("C%d: Partner BUSY, request will be retried",
-				port);
-			pd_timer_enable(port, PE_TIMER_DISCOVER_IDENTITY,
-					PD_T_VDM_BUSY);
-
-			return VDM_RESULT_NO_ACTION;
-		} else if (PD_VDO_CMDT(payload[0]) == CMDT_INIT) {
-			/*
-			 * Unexpected VDM REQ received. Let Src.Ready or
-			 * Snk.Ready handle it.
-			 */
-			PE_SET_FLAG(port, PE_FLAGS_MSG_RECEIVED);
-			return VDM_RESULT_NO_ACTION;
-		}
-
-		/*
-		 * Partner gave us an incorrect size or command; mark discovery
-		 * as failed.
-		 */
-		CPRINTS("C%d: Unexpected VDM response: 0x%04x 0x%04x", port,
-			rx_emsg[port].header, payload[0]);
-		return VDM_RESULT_NAK;
-	} else if (sop == pe[port].tx_type && ext == 0 && cnt == 0 &&
-		   type == PD_CTRL_NOT_SUPPORTED) {
-		/*
-		 * A NAK would be more expected here, but Not Supported is still
-		 * allowed with the same meaning.
-		 */
-		return VDM_RESULT_NAK;
-	}
-
-	/* Unexpected Message Received. Src.Ready or Snk.Ready can handle it. */
-	PE_SET_FLAG(port, PE_FLAGS_MSG_RECEIVED);
-	return VDM_RESULT_NO_ACTION;
 }
 
 uint32_t pd_compose_svdm_req_header(int port, enum tcpci_msg_type type,
