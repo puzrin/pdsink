@@ -342,20 +342,6 @@ static const struct usb_state pe_states[];
 __maybe_unused static __const_data const char *const pe_state_names[] = {
 /* Super States */
 	[PE_PRS_FRS_SHARED] = "SS:PE_PRS_FRS_SHARED",
-	[PE_VDM_SEND_REQUEST] = "SS:PE_VDM_Send_Request",
-
-	/* Normal States */
-	[PE_SRC_STARTUP] = "PE_SRC_Startup",
-	[PE_SRC_DISCOVERY] = "PE_SRC_Discovery",
-	[PE_SRC_SEND_CAPABILITIES] = "PE_SRC_Send_Capabilities",
-	[PE_SRC_NEGOTIATE_CAPABILITY] = "PE_SRC_Negotiate_Capability",
-	[PE_SRC_TRANSITION_SUPPLY] = "PE_SRC_Transition_Supply",
-	[PE_SRC_READY] = "PE_SRC_Ready",
-	[PE_SRC_DISABLED] = "PE_SRC_Disabled",
-	[PE_SRC_CAPABILITY_RESPONSE] = "PE_SRC_Capability_Response",
-	[PE_SRC_HARD_RESET] = "PE_SRC_Hard_Reset",
-	[PE_SRC_HARD_RESET_RECEIVED] = "PE_SRC_Hard_Reset_Received",
-	[PE_SRC_TRANSITION_TO_DEFAULT] = "PE_SRC_Transition_to_default",
 	[PE_SNK_STARTUP] = "PE_SNK_Startup",
 	[PE_SNK_DISCOVERY] = "PE_SNK_Discovery",
 	[PE_SNK_WAIT_FOR_CAPABILITIES] = "PE_SNK_Wait_for_Capabilities",
@@ -384,13 +370,6 @@ __maybe_unused static __const_data const char *const pe_state_names[] = {
 	[PE_PRS_SNK_SRC_ASSERT_RP] = "PE_PRS_SNK_SRC_Assert_Rp",
 	[PE_PRS_SNK_SRC_SOURCE_ON] = "PE_PRS_SNK_SRC_Source_On",
 	[PE_PRS_SNK_SRC_SEND_SWAP] = "PE_PRS_SNK_SRC_Send_Swap",
-	[PE_VDM_IDENTITY_REQUEST_CBL] = "PE_VDM_Identity_Request_Cbl",
-	[PE_INIT_PORT_VDM_IDENTITY_REQUEST] =
-		"PE_INIT_PORT_VDM_Identity_Request",
-	[PE_INIT_VDM_SVIDS_REQUEST] = "PE_INIT_VDM_SVIDs_Request",
-	[PE_INIT_VDM_MODES_REQUEST] = "PE_INIT_VDM_Modes_Request",
-	[PE_VDM_REQUEST_DPM] = "PE_VDM_Request_DPM",
-	[PE_VDM_RESPONSE] = "PE_VDM_Response",
 	[PE_WAIT_FOR_ERROR_RECOVERY] = "PE_Wait_For_Error_Recovery",
 	[PE_BIST_TX] = "PE_Bist_TX",
 	[PE_DEU_SEND_ENTER_USB] = "PE_DEU_Send_Enter_USB",
@@ -5182,61 +5161,6 @@ static __const_data const struct usb_state pe_states[] = {
 		.entry = pe_prs_frs_shared_entry,
 		.exit  = pe_prs_frs_shared_exit,
 	},
-	[PE_VDM_SEND_REQUEST] = {
-		.entry = pe_vdm_send_request_entry,
-		.run   = pe_vdm_send_request_run,
-		.exit  = pe_vdm_send_request_exit,
-	},
-
-	/* Normal States */
-	[PE_SRC_STARTUP] = {
-		.entry = pe_src_startup_entry,
-		.run   = pe_src_startup_run,
-		.exit  = pe_src_startup_exit,
-	},
-	[PE_SRC_DISCOVERY] = {
-		.entry = pe_src_discovery_entry,
-		.run   = pe_src_discovery_run,
-	},
-	[PE_SRC_SEND_CAPABILITIES] = {
-		.entry = pe_src_send_capabilities_entry,
-		.run   = pe_src_send_capabilities_run,
-		.exit  = pe_src_send_capabilities_exit,
-	},
-	[PE_SRC_NEGOTIATE_CAPABILITY] = {
-		.entry = pe_src_negotiate_capability_entry,
-	},
-	[PE_SRC_TRANSITION_SUPPLY] = {
-		.entry = pe_src_transition_supply_entry,
-		.run   = pe_src_transition_supply_run,
-		.exit  = pe_src_transition_supply_exit,
-	},
-	[PE_SRC_READY] = {
-		.entry = pe_src_ready_entry,
-		.run   = pe_src_ready_run,
-		.exit   = pe_src_ready_exit,
-	},
-	[PE_SRC_DISABLED] = {
-		.entry = pe_src_disabled_entry,
-	},
-	[PE_SRC_CAPABILITY_RESPONSE] = {
-		.entry = pe_src_capability_response_entry,
-		.run   = pe_src_capability_response_run,
-	},
-	[PE_SRC_HARD_RESET] = {
-		.entry = pe_src_hard_reset_entry,
-		.run   = pe_src_hard_reset_run,
-		.exit  = pe_src_hard_reset_exit,
-	},
-	[PE_SRC_HARD_RESET_RECEIVED] = {
-		.entry = pe_src_hard_reset_received_entry,
-		.run = pe_src_hard_reset_received_run,
-		.exit = pe_src_hard_reset_received_exit,
-	},
-	[PE_SRC_TRANSITION_TO_DEFAULT] = {
-		.entry = pe_src_transition_to_default_entry,
-		.run = pe_src_transition_to_default_run,
-	},
 	[PE_SNK_STARTUP] = {
 		.entry = pe_snk_startup_entry,
 		.run = pe_snk_startup_run,
@@ -5371,41 +5295,6 @@ static __const_data const struct usb_state pe_states[] = {
 		.run   = pe_prs_snk_src_send_swap_run,
 		.exit  = pe_prs_snk_src_send_swap_exit,
 		.parent = &pe_states[PE_PRS_FRS_SHARED],
-	},
-	[PE_VDM_IDENTITY_REQUEST_CBL] = {
-		.entry  = pe_vdm_identity_request_cbl_entry,
-		.run    = pe_vdm_identity_request_cbl_run,
-		.exit   = pe_vdm_identity_request_cbl_exit,
-		.parent = &pe_states[PE_VDM_SEND_REQUEST],
-	},
-	[PE_INIT_PORT_VDM_IDENTITY_REQUEST] = {
-		.entry  = pe_init_port_vdm_identity_request_entry,
-		.run    = pe_init_port_vdm_identity_request_run,
-		.exit	= pe_init_port_vdm_identity_request_exit,
-		.parent = &pe_states[PE_VDM_SEND_REQUEST],
-	},
-	[PE_INIT_VDM_SVIDS_REQUEST] = {
-		.entry	= pe_init_vdm_svids_request_entry,
-		.run	= pe_init_vdm_svids_request_run,
-		.exit	= pe_init_vdm_svids_request_exit,
-		.parent = &pe_states[PE_VDM_SEND_REQUEST],
-	},
-	[PE_INIT_VDM_MODES_REQUEST] = {
-		.entry	= pe_init_vdm_modes_request_entry,
-		.run	= pe_init_vdm_modes_request_run,
-		.exit   = pe_init_vdm_modes_request_exit,
-		.parent = &pe_states[PE_VDM_SEND_REQUEST],
-	},
-	[PE_VDM_REQUEST_DPM] = {
-		.entry = pe_vdm_request_dpm_entry,
-		.run   = pe_vdm_request_dpm_run,
-		.exit  = pe_vdm_request_dpm_exit,
-		.parent = &pe_states[PE_VDM_SEND_REQUEST],
-	},
-	[PE_VDM_RESPONSE] = {
-		.entry = pe_vdm_response_entry,
-		.run   = pe_vdm_response_run,
-		.exit  = pe_vdm_response_exit,
 	},
 	[PE_DEU_SEND_ENTER_USB] = {
 		.entry = pe_enter_usb_entry,
