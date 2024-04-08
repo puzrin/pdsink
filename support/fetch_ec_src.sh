@@ -58,7 +58,7 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_dpm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 
 $EVAL_MACRO $SRC_DIR/usb_pe_drp_sm.c $LIB_CONFIG
-spatch --sp-file $HELPERS_DIR/pe_fsm_functions_remove.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 spatch --sp-file $HELPERS_DIR/remove_pe_states.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
+spatch --sp-file $HELPERS_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 spatch --sp-file $HELPERS_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 #spatch --sp-file $HELPERS_DIR/remove_dead_branches.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
