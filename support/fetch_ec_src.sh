@@ -2,6 +2,7 @@
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 EC_DIR=$SCRIPT_DIR/ec_tmp
+ZEPHYR_DIR=$SCRIPT_DIR/zephyr_tmp
 PATCHES_DIR=$SCRIPT_DIR/patches
 SRC_DIR=$SCRIPT_DIR/../src
 INCLUDE_DIR=$SCRIPT_DIR/../include
@@ -11,6 +12,7 @@ UNIFDEF_OPTS="-m -f $LIB_CONFIG"
 EVAL_MACRO=$SCRIPT_DIR/patches/eval_IS_ENABLED_macro.py
 
 [ -d $EC_DIR/.git ] || git clone --depth 1 https://chromium.googlesource.com/chromiumos/platform/ec $EC_DIR
+[ -d $ZEPHYR_DIR/.git ] || git clone --depth 1 https://github.com/zephyrproject-rtos/zephyr.git $ZEPHYR_DIR
 
 mkdir -p $SCRIPT_DIR/../src
 mkdir -p $SCRIPT_DIR/../src/driver
@@ -50,6 +52,9 @@ cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.h $SRC_DIR/driver
 
 cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
+
+cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32.c $SRC_DIR/driver
+cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32_priv.h $SRC_DIR/driver
 
 #
 # Core patches
