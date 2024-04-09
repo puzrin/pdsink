@@ -451,7 +451,7 @@ int tcpci_tcpm_set_rx_enable(int port, int enable)
 {
 	int detect_sop_en = 0;
 
-	if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)) {
+	if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
 		/* save rx_on */
 		rx_en[port] = enable;
 	}
@@ -459,7 +459,7 @@ int tcpci_tcpm_set_rx_enable(int port, int enable)
 	if (enable) {
 		detect_sop_en = TCPC_REG_RX_DETECT_SOP_HRST_MASK;
 
-		if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP) &&
+		if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/ &&
 		    sop_prime_en[port]) {
 			/*
 			 * Only the VCONN Source is allowed to communicate
@@ -557,7 +557,7 @@ static int tcpci_rev1_0_tcpm_get_message_raw(int port, uint32_t *payload,
 		goto clear;
 	}
 
-	if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)) {
+	if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
 		rv = tcpc_read(port, TCPC_REG_RX_BUF_FRAME_TYPE, &frm);
 		if (rv != EC_SUCCESS) {
 			rv = EC_ERROR_UNKNOWN;
@@ -567,7 +567,7 @@ static int tcpci_rev1_0_tcpm_get_message_raw(int port, uint32_t *payload,
 
 	rv = tcpc_read16(port, TCPC_REG_RX_HDR, (int *)head);
 
-	if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)) {
+	if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
 		/* Encode message address in bits 31 to 28 */
 		*head &= 0x0000ffff;
 		*head |= PD_HEADER_SOP(frm);
@@ -1037,7 +1037,7 @@ void tcpci_tcpc_alert(int port)
 		tcpc_write16(port, TCPC_REG_ALERT, alert);
 
 	if (alert & TCPC_REG_ALERT_CC_STATUS) {
-		if (IS_ENABLED(CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE)) {
+		if (0/*IS_ENABLED(CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE)*/) {
 			enum tcpc_cc_voltage_status cc1;
 			enum tcpc_cc_voltage_status cc2;
 

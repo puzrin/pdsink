@@ -104,11 +104,6 @@ static int stm32gx_tcpm_transmit(int port, enum tcpci_msg_type type,
 	return stm32gx_ucpd_transmit(port, type, header, data);
 }
 
-static int stm32gx_tcpm_sop_prime_enable(int port, bool enable)
-{
-	return stm32gx_ucpd_sop_prime_enable(port, enable);
-}
-
 static int
 stm32gx_tcpm_get_chip_info(int port, int live,
 			   struct ec_response_pd_chip_info_v1 *chip_info)
