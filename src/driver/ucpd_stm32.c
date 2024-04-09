@@ -255,112 +255,6 @@ static int ucpd_get_cc(const struct device *dev,
 }
 
 /**
- * @brief Enable or Disable VCONN
- *
- * @retval 0 on success
- * @retval -EIO on failure
- * @retval -ENOTSUP if not supported
- */
-static int ucpd_set_vconn(const struct device *dev, bool enable)
-{
-	struct tcpc_data *data = dev->data;
-	const struct tcpc_config *const config = dev->config;
-	int cr;
-	int ret;
-
-	if (data->vconn_cb == NULL) {
-		return -ENOTSUP;
-	}
-
-	/* Update VCONN on/off status. Do this before getting cc enable mask */
-	data->ucpd_vconn_enable = enable;
-
-	cr = LL_UCPD_ReadReg(config->ucpd_port, CR);
-	cr &= ~UCPD_CR_CCENABLE_Msk;
-	cr |= ucpd_get_cc_enable_mask(dev);
-
-	/* Apply cc pull resistor change */
-	LL_UCPD_WriteReg(config->ucpd_port, CR, cr);
-
-#ifdef CONFIG_SOC_SERIES_STM32G0X
-	update_stm32g0x_cc_line(config->ucpd_port);
-#endif
-
-	/* Get CC line that VCONN is active on */
-	data->ucpd_vconn_cc = (cr & UCPD_CR_CCENABLE_0) ?
-				TC_POLARITY_CC2 : TC_POLARITY_CC1;
-
-	/* Call user supplied callback to set vconn */
-	ret = data->vconn_cb(dev, data->ucpd_vconn_cc, enable);
-
-	return ret;
-}
-
-/**
- * @brief Discharge VCONN
- *
- * @retval 0 on success
- * @retval -EIO on failure
- * @retval -ENOTSUP if not supported
- */
-static int ucpd_vconn_discharge(const struct device *dev, bool enable)
-{
-	struct tcpc_data *data = dev->data;
-	const struct tcpc_config *const config = dev->config;
-
-	/* VCONN should not be discharged while it's enabled */
-	if (data->ucpd_vconn_enable) {
-		return -EIO;
-	}
-
-	if (data->vconn_discharge_cb) {
-		/* Use DPM supplied VCONN Discharge */
-		return data->vconn_discharge_cb(dev, data->ucpd_vconn_cc, enable);
-	}
-
-	/* Use TCPC VCONN Discharge */
-	if (enable) {
-		LL_UCPD_VconnDischargeEnable(config->ucpd_port);
-	} else {
-		LL_UCPD_VconnDischargeDisable(config->ucpd_port);
-	}
-
-#ifdef CONFIG_SOC_SERIES_STM32G0X
-	update_stm32g0x_cc_line(config->ucpd_port);
-#endif
-
-	return 0;
-}
-
-/**
- * @brief Sets the value of the CC pull up resistor used when operating as a Source
- *
- * @retval 0 on success
- */
-static int ucpd_select_rp_value(const struct device *dev, enum tc_rp_value rp)
-{
-	struct tcpc_data *data = dev->data;
-
-	data->rp = rp;
-
-	return 0;
-}
-
-/**
- * @brief Gets the value of the CC pull up resistor used when operating as a Source
- *
- * @retval 0 on success
- */
-static int ucpd_get_rp_value(const struct device *dev, enum tc_rp_value *rp)
-{
-	struct tcpc_data *data = dev->data;
-
-	*rp = data->rp;
-
-	return 0;
-}
-
-/**
  * @brief Enable or disable Dead Battery resistors
  */
 static void dead_battery(const struct device *dev, bool en)
@@ -509,40 +403,6 @@ static int ucpd_set_rx_enable(const struct device *dev, bool enable)
 		LL_UCPD_WriteReg(config->ucpd_port, CR, cr);
 		LL_UCPD_WriteReg(config->ucpd_port, IMR, imr);
 	}
-
-	return 0;
-}
-
-/**
- * @brief Set the Power and Data role used when sending goodCRC messages
- *
- * @retval 0 on success
- * @retval -EIO on failure
- */
-static int ucpd_set_roles(const struct device *dev,
-			  enum tc_power_role power_role,
-			  enum tc_data_role data_role)
-{
-	struct tcpc_data *data = dev->data;
-
-	data->msg_header.pr = power_role;
-	data->msg_header.dr = data_role;
-
-	return 0;
-}
-
-/**
- * @brief Enable the reception of SOP Prime messages
- *
- * @retval 0 on success
- * @retval -EIO on failure
- */
-static int ucpd_sop_prime_enable(const struct device *dev, bool enable)
-{
-	struct tcpc_data *data = dev->data;
-
-	/* Update static variable used to filter SOP//SOP'' messages */
-	data->ucpd_rx_sop_prime_enabled = enable;
 
 	return 0;
 }
@@ -1060,23 +920,6 @@ static int ucpd_get_rx_pending_msg(const struct device *dev, struct pd_msg *msg)
 }
 
 /**
- * @brief Enable or Disable BIST Test mode
- *
- * return 0 on success
- * return -EIO on failure
- */
-static int ucpd_set_bist_test_mode(const struct device *dev,
-				   bool enable)
-{
-	struct tcpc_data *data = dev->data;
-
-	data->ucpd_rx_bist_mode = enable;
-	LOG_INF("ucpd: Bist test mode = %d", enable);
-
-	return 0;
-}
-
-/**
  * @brief UCPD interrupt handler
  */
 static void ucpd_isr(const struct device *dev_inst[])
@@ -1247,26 +1090,6 @@ static void ucpd_isr(const struct device *dev_inst[])
 }
 
 /**
- * @brief Dump a set of TCPC registers
- *
- * @retval 0 on success
- * @retval -EIO on failure
- */
-static int ucpd_dump_std_reg(const struct device *dev)
-{
-	const struct tcpc_config *const config = dev->config;
-
-	LOG_INF("CFGR1: %08x", LL_UCPD_ReadReg(config->ucpd_port, CFG1));
-	LOG_INF("CFGR2: %08x", LL_UCPD_ReadReg(config->ucpd_port, CFG2));
-	LOG_INF("CR:    %08x", LL_UCPD_ReadReg(config->ucpd_port, CR));
-	LOG_INF("IMR:   %08x", LL_UCPD_ReadReg(config->ucpd_port, IMR));
-	LOG_INF("SR:    %08x", LL_UCPD_ReadReg(config->ucpd_port, SR));
-	LOG_INF("ICR:   %08x\n", LL_UCPD_ReadReg(config->ucpd_port, ICR));
-
-	return 0;
-}
-
-/**
  * @brief Sets the alert function that's called when an interrupt is triggered
  *        due to a TCPC alert
  *
@@ -1282,34 +1105,6 @@ static int ucpd_set_alert_handler_cb(const struct device *dev,
 	data->alert_info.data = alert_data;
 
 	return 0;
-}
-
-/**
- * @brief Sets a callback that can enable or disable VCONN if the TCPC is
- *        unable to or the system is configured in a way that does not use
- *        the VCONN control capabilities of the TCPC
- *
- */
-static void ucpd_set_vconn_cb(const struct device *dev,
-			      tcpc_vconn_control_cb_t vconn_cb)
-{
-	struct tcpc_data *data = dev->data;
-
-	data->vconn_cb = vconn_cb;
-}
-
-/**
- * @brief Sets a callback that can discharge VCONN if the TCPC is
- *        unable to or the system is configured in a way that does not use
- *        the VCONN discharge capabilities of the TCPC
- *
- */
-static void ucpd_set_vconn_discharge_cb(const struct device *dev,
-					tcpc_vconn_discharge_cb_t cb)
-{
-	struct tcpc_data *data = dev->data;
-
-	data->vconn_discharge_cb = cb;
 }
 
 /**
@@ -1425,18 +1220,18 @@ static const struct tcpc_driver_api driver_api = {
 	.set_rx_enable = ucpd_set_rx_enable,
 	.get_rx_pending_msg = ucpd_get_rx_pending_msg,
 	.transmit_data = ucpd_transmit_data,
-	.select_rp_value = ucpd_select_rp_value,
-	.get_rp_value = ucpd_get_rp_value,
+	.select_rp_value = NULL,
+	.get_rp_value = NULL,
 	.set_cc = ucpd_set_cc,
-	.set_roles = ucpd_set_roles,
-	.set_vconn_cb = ucpd_set_vconn_cb,
-	.set_vconn_discharge_cb = ucpd_set_vconn_discharge_cb,
-	.set_vconn = ucpd_set_vconn,
-	.vconn_discharge = ucpd_vconn_discharge,
+	.set_roles = NULL,
+	.set_vconn_cb = NULL,
+	.set_vconn_discharge_cb = NULL,
+	.set_vconn = NULL,
+	.vconn_discharge = NULL,
 	.set_cc_polarity = ucpd_cc_set_polarity,
-	.dump_std_reg = ucpd_dump_std_reg,
-	.set_bist_test_mode = ucpd_set_bist_test_mode,
-	.sop_prime_enable = ucpd_sop_prime_enable,
+	.dump_std_reg = NULL,
+	.set_bist_test_mode = NULL,
+	.sop_prime_enable = NULL,
 };
 
 #define DEV_INST_INIT(n) dev_inst[n] = DEVICE_DT_INST_GET(n);

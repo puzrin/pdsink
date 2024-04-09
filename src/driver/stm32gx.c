@@ -37,19 +37,9 @@
 
 static int cached_rp[CONFIG_USB_PD_PORT_MAX_COUNT];
 
-static int stm32gx_tcpm_get_message_raw(int port, uint32_t *buf, int *head)
-{
-	return stm32gx_ucpd_get_message_raw(port, buf, head);
-}
-
 static int stm32gx_tcpm_init(int port)
 {
 	return stm32gx_ucpd_init(port);
-}
-
-static int stm32gx_tcpm_release(int port)
-{
-	return stm32gx_ucpd_release(port);
 }
 
 static int stm32gx_tcpm_get_cc(int port, enum tcpc_cc_voltage_status *cc1,
@@ -57,13 +47,6 @@ static int stm32gx_tcpm_get_cc(int port, enum tcpc_cc_voltage_status *cc1,
 {
 	/* Get cc_state value for each CC line */
 	stm32gx_ucpd_get_cc(port, cc1, cc2);
-
-	return EC_SUCCESS;
-}
-
-static int stm32gx_tcpm_select_rp_value(int port, int rp_sel)
-{
-	cached_rp[port] = rp_sel;
 
 	return EC_SUCCESS;
 }
@@ -76,16 +59,6 @@ static int stm32gx_tcpm_set_cc(int port, int pull)
 static int stm32gx_tcpm_set_polarity(int port, enum tcpc_cc_polarity polarity)
 {
 	return stm32gx_ucpd_set_polarity(port, polarity);
-}
-
-static int stm32gx_tcpm_set_vconn(int port, int enable)
-{
-	stm32gx_ucpd_vconn_disc_rp(port, enable);
-
-	if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/)
-		stm32gx_ucpd_sop_prime_enable(port, enable);
-
-	return EC_SUCCESS;
 }
 
 static int stm32gx_tcpm_set_msg_header(int port, int power_role, int data_role)
@@ -104,13 +77,6 @@ static int stm32gx_tcpm_transmit(int port, enum tcpci_msg_type type,
 	return stm32gx_ucpd_transmit(port, type, header, data);
 }
 
-static int
-stm32gx_tcpm_get_chip_info(int port, int live,
-			   struct ec_response_pd_chip_info_v1 *chip_info)
-{
-	return stm32gx_ucpd_get_chip_info(port, live, chip_info);
-}
-
 static void stm32gx_tcpm_sw_reset(void)
 {
 	/*
@@ -120,20 +86,6 @@ static void stm32gx_tcpm_sw_reset(void)
 	 */
 }
 DECLARE_HOOK(HOOK_USB_PD_DISCONNECT, stm32gx_tcpm_sw_reset, HOOK_PRIO_DEFAULT);
-
-static int stm32gx_tcpm_reset_bist_type_2(int port)
-{
-	/*
-	 * The UCPD peripheral must be disabled, then enabled, to recover from
-	 * starting BIST type-2 mode. Call the init method to accomplish
-	 * this. Then, need to send a hard reset to port partner.
-	 */
-	stm32gx_ucpd_init(port);
-	pd_execute_hard_reset(port);
-	task_set_event(PD_PORT_TO_TASK_ID(port), TASK_EVENT_WAKE);
-
-	return EC_SUCCESS;
-}
 
 enum ec_error_list stm32gx_tcpm_set_bist_test_mode(const int port,
 						   const bool enable)
@@ -155,18 +107,18 @@ bool stm32gx_tcpm_check_vbus_level(int port, enum vbus_level level)
 
 const struct tcpm_drv stm32gx_tcpm_drv = {
 	.init = &stm32gx_tcpm_init,
-	.release = &stm32gx_tcpm_release,
+	.release = NULL,
 	.get_cc = &stm32gx_tcpm_get_cc,
-	.check_vbus_level = &stm32gx_tcpm_check_vbus_level,
-	.select_rp_value = &stm32gx_tcpm_select_rp_value,
+	.check_vbus_level = NULL,
+	.select_rp_value = NULL,
 	.set_cc = &stm32gx_tcpm_set_cc,
 	.set_polarity = &stm32gx_tcpm_set_polarity,
-	.set_vconn = &stm32gx_tcpm_set_vconn,
+	.set_vconn = NULL,
 	.set_msg_header = &stm32gx_tcpm_set_msg_header,
 	.set_rx_enable = &stm32gx_tcpm_set_rx_enable,
-	.get_message_raw = &stm32gx_tcpm_get_message_raw,
+	.get_message_raw = NULL,
 	.transmit = &stm32gx_tcpm_transmit,
-	.get_chip_info = &stm32gx_tcpm_get_chip_info,
-	.reset_bist_type_2 = &stm32gx_tcpm_reset_bist_type_2,
-	.set_bist_test_mode = &stm32gx_tcpm_set_bist_test_mode,
+	.get_chip_info = NULL,
+	.reset_bist_type_2 = NULL,
+	.set_bist_test_mode = NULL,
 };

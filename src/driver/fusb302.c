@@ -345,43 +345,6 @@ static int fusb302_send_message(int port, uint16_t header, const uint32_t *data,
 	return rv;
 }
 
-static int fusb302_tcpm_select_rp_value(int port, int rp)
-{
-	int reg;
-	int rv;
-	uint8_t vnc, rd;
-
-	/* Keep track of current RP value */
-	tcpci_set_cached_rp(port, rp);
-
-	rv = tcpc_read(port, TCPC_REG_CONTROL0, &reg);
-	if (rv)
-		return rv;
-
-	/* Set the current source for Rp value */
-	reg &= ~TCPC_REG_CONTROL0_HOST_CUR_MASK;
-	switch (rp) {
-	case TYPEC_RP_1A5:
-		reg |= TCPC_REG_CONTROL0_HOST_CUR_1A5;
-		vnc = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_1_5_VNC_MV);
-		rd = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_1_5_RD_THRESH_MV);
-		break;
-	case TYPEC_RP_3A0:
-		reg |= TCPC_REG_CONTROL0_HOST_CUR_3A0;
-		vnc = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_3_0_VNC_MV);
-		rd = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_3_0_RD_THRESH_MV);
-		break;
-	case TYPEC_RP_USB:
-	default:
-		reg |= TCPC_REG_CONTROL0_HOST_CUR_USB;
-		vnc = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_DEF_VNC_MV);
-		rd = TCPC_REG_MEASURE_MDAC_MV(PD_SRC_DEF_RD_THRESH_MV);
-	}
-	state[port].mdac_vnc = vnc;
-	state[port].mdac_rd = rd;
-	return tcpc_write(port, TCPC_REG_CONTROL0, reg);
-}
-
 static int fusb302_tcpm_init(int port)
 {
 	int reg;
@@ -445,11 +408,6 @@ static int fusb302_tcpm_init(int port)
 
 
 	return 0;
-}
-
-static int fusb302_tcpm_release(int port)
-{
-	return EC_ERROR_UNIMPLEMENTED;
 }
 
 static int fusb302_tcpm_get_cc(int port, enum tcpc_cc_voltage_status *cc1,
@@ -589,69 +547,6 @@ static int fusb302_tcpm_set_polarity(int port, enum tcpc_cc_polarity polarity)
 	return 0;
 }
 
-__maybe_unused static int fusb302_tcpm_decode_sop_prime_enable(int port,
-							       bool enable)
-{
-	int reg;
-
-	if (tcpc_read(port, TCPC_REG_CONTROL1, &reg))
-		return EC_ERROR_UNKNOWN;
-
-	if (enable)
-		reg |= (TCPC_REG_CONTROL1_ENSOP1 | TCPC_REG_CONTROL1_ENSOP2);
-	else
-		reg &= ~(TCPC_REG_CONTROL1_ENSOP1 | TCPC_REG_CONTROL1_ENSOP2);
-
-	return tcpc_write(port, TCPC_REG_CONTROL1, reg);
-}
-
-static int fusb302_tcpm_set_vconn(int port, int enable)
-{
-	/*
-	 * FUSB302 does not have dedicated VCONN Enable switch.
-	 * We'll get through this by disabling both of the
-	 * VCONN - CC* switches to disable, and enabling the
-	 * saved polarity when enabling.
-	 * Therefore at startup, tcpm_set_polarity should be called first,
-	 * or else live with the default put into tcpm_init.
-	 */
-	int reg;
-
-	/* save enable state for later use */
-	state[port].vconn_enabled = enable;
-
-	if (enable) {
-		/* set to saved polarity */
-		tcpm_set_polarity(port, state[port].cc_polarity);
-
-		if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
-			if (state[port].rx_enable) {
-				if (fusb302_tcpm_decode_sop_prime_enable(port,
-									 true))
-					return EC_ERROR_UNKNOWN;
-			}
-		}
-	} else {
-		tcpc_read(port, TCPC_REG_SWITCHES0, &reg);
-
-		/* clear VCONN switch bits */
-		reg &= ~TCPC_REG_SWITCHES0_VCONN_CC1;
-		reg &= ~TCPC_REG_SWITCHES0_VCONN_CC2;
-
-		tcpc_write(port, TCPC_REG_SWITCHES0, reg);
-
-		if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
-			if (state[port].rx_enable) {
-				if (fusb302_tcpm_decode_sop_prime_enable(port,
-									 false))
-					return EC_ERROR_UNKNOWN;
-			}
-		}
-	}
-
-	return 0;
-}
-
 static int fusb302_tcpm_set_msg_header(int port, int power_role, int data_role)
 {
 	int reg;
@@ -731,70 +626,6 @@ static int fusb302_rx_fifo_is_empty(int port)
 
 	return (!tcpc_read(port, TCPC_REG_STATUS1, &reg)) &&
 	       (reg & TCPC_REG_STATUS1_RX_EMPTY);
-}
-
-static int fusb302_tcpm_get_message_raw(int port, uint32_t *payload, int *head)
-{
-	/*
-	 * This is the buffer that will get the burst-read data
-	 * from the fusb302.
-	 *
-	 * It's re-used in a couple different spots, the worst of which
-	 * is the PD packet (not header) and CRC.
-	 * maximum size necessary = 28 + 4 = 32
-	 */
-	uint8_t buf[32];
-	int rv, len;
-
-	/* Read until we have a non-GoodCRC packet or an empty FIFO */
-	do {
-		buf[0] = TCPC_REG_FIFOS;
-		tcpc_lock(port, 1);
-
-		/*
-		 * PART 1 OF BURST READ: Write in register address.
-		 * Issue a START, no STOP.
-		 */
-		rv = tcpc_xfer_unlocked(port, buf, 1, 0, 0, I2C_XFER_START);
-
-		/*
-		 * PART 2 OF BURST READ: Read up to the header.
-		 * Issue a repeated START, no STOP.
-		 * only grab three bytes so we can get the header
-		 * and determine how many more bytes we need to read.
-		 * TODO: Check token to ensure valid packet.
-		 */
-		rv |= tcpc_xfer_unlocked(port, 0, 0, buf, 3, I2C_XFER_START);
-
-		/* Grab the header */
-		*head = (buf[1] & 0xFF);
-		*head |= ((buf[2] << 8) & 0xFF00);
-
-		/* figure out packet length, subtract header bytes */
-		len = get_num_bytes(*head) - 2;
-
-		/*
-		 * PART 3 OF BURST READ: Read everything else.
-		 * No START, but do issue a STOP at the end.
-		 * add 4 to len to read CRC out
-		 */
-		rv |= tcpc_xfer_unlocked(port, 0, 0, buf, len + 4,
-					 I2C_XFER_STOP);
-
-		tcpc_lock(port, 0);
-	} while (!rv && PACKET_IS_GOOD_CRC(*head) &&
-		 !fusb302_rx_fifo_is_empty(port));
-
-	if (!rv) {
-		/* Discard GoodCRC packets */
-		if (PACKET_IS_GOOD_CRC(*head))
-			rv = EC_ERROR_UNKNOWN;
-		else
-			memcpy(payload, buf, len);
-	}
-
-
-	return rv;
 }
 
 static int fusb302_tcpm_transmit(int port, enum tcpci_msg_type type,
@@ -1036,16 +867,16 @@ int fusb302_get_vbus_voltage(int port, int *vbus)
 
 const struct tcpm_drv fusb302_tcpm_drv = {
 	.init = &fusb302_tcpm_init,
-	.release = &fusb302_tcpm_release,
+	.release = NULL,
 	.get_cc = &fusb302_tcpm_get_cc,
-	.get_vbus_voltage = &fusb302_get_vbus_voltage,
-	.select_rp_value = &fusb302_tcpm_select_rp_value,
+	.get_vbus_voltage = NULL,
+	.select_rp_value = NULL,
 	.set_cc = &fusb302_tcpm_set_cc,
 	.set_polarity = &fusb302_tcpm_set_polarity,
-	.set_vconn = &fusb302_tcpm_set_vconn,
+	.set_vconn = NULL,
 	.set_msg_header = &fusb302_tcpm_set_msg_header,
 	.set_rx_enable = &fusb302_tcpm_set_rx_enable,
-	.get_message_raw = &fusb302_tcpm_get_message_raw,
+	.get_message_raw = NULL,
 	.transmit = &fusb302_tcpm_transmit,
 	.tcpc_alert = &fusb302_tcpc_alert,
 };
