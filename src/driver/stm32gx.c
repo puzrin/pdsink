@@ -37,6 +37,11 @@
 
 static int cached_rp[CONFIG_USB_PD_PORT_MAX_COUNT];
 
+static int stm32gx_tcpm_get_message_raw(int port, uint32_t *buf, int *head)
+{
+	return stm32gx_ucpd_get_message_raw(port, buf, head);
+}
+
 static int stm32gx_tcpm_init(int port)
 {
 	return stm32gx_ucpd_init(port);
@@ -116,7 +121,7 @@ const struct tcpm_drv stm32gx_tcpm_drv = {
 	.set_vconn = NULL,
 	.set_msg_header = &stm32gx_tcpm_set_msg_header,
 	.set_rx_enable = &stm32gx_tcpm_set_rx_enable,
-	.get_message_raw = NULL,
+	.get_message_raw = &stm32gx_tcpm_get_message_raw,
 	.transmit = &stm32gx_tcpm_transmit,
 	.get_chip_info = NULL,
 	.reset_bist_type_2 = NULL,

@@ -110,87 +110,6 @@ static int convert_bc_lvl(int port, int bc_lvl)
 	return ret;
 }
 
-static int measure_cc_pin_source(int port, int cc_measure)
-{
-	int switches0_reg;
-	int reg;
-	int cc_lvl;
-
-	mutex_lock(&measure_lock);
-
-	/* Read status register */
-	tcpc_read(port, TCPC_REG_SWITCHES0, &reg);
-	/* Save current value */
-	switches0_reg = reg;
-	/* Clear pull-up register settings and measure bits */
-	reg &= ~(TCPC_REG_SWITCHES0_MEAS_CC1 | TCPC_REG_SWITCHES0_MEAS_CC2);
-	/* Set desired pullup register bit */
-	if (cc_measure == TCPC_REG_SWITCHES0_MEAS_CC1)
-		reg |= TCPC_REG_SWITCHES0_CC1_PU_EN;
-	else
-		reg |= TCPC_REG_SWITCHES0_CC2_PU_EN;
-	/* Set CC measure bit */
-	reg |= cc_measure;
-
-	/* Set measurement switch */
-	tcpc_write(port, TCPC_REG_SWITCHES0, reg);
-
-	/* Set MDAC for Open vs Rd/Ra comparison */
-	tcpc_write(port, TCPC_REG_MEASURE, state[port].mdac_vnc);
-
-	/* Wait on measurement */
-	usleep(250);
-
-	/* Read status register */
-	tcpc_read(port, TCPC_REG_STATUS0, &reg);
-
-	/* Assume open */
-	cc_lvl = TYPEC_CC_VOLT_OPEN;
-
-	/* CC level is below the 'no connect' threshold (vOpen) */
-	if ((reg & TCPC_REG_STATUS0_COMP) == 0) {
-		/* Set MDAC for Rd vs Ra comparison */
-		tcpc_write(port, TCPC_REG_MEASURE, state[port].mdac_rd);
-
-		/* Wait on measurement */
-		usleep(250);
-
-		/* Read status register */
-		tcpc_read(port, TCPC_REG_STATUS0, &reg);
-
-		cc_lvl = (reg & TCPC_REG_STATUS0_COMP) ? TYPEC_CC_VOLT_RD :
-							 TYPEC_CC_VOLT_RA;
-	}
-
-	/* Restore SWITCHES0 register to its value prior */
-	tcpc_write(port, TCPC_REG_SWITCHES0, switches0_reg);
-
-	mutex_unlock(&measure_lock);
-
-	return cc_lvl;
-}
-
-/* Determine cc pin state for source when in manual detect mode */
-static void detect_cc_pin_source_manual(int port,
-					enum tcpc_cc_voltage_status *cc1_lvl,
-					enum tcpc_cc_voltage_status *cc2_lvl)
-{
-	int cc1_measure = TCPC_REG_SWITCHES0_MEAS_CC1;
-	int cc2_measure = TCPC_REG_SWITCHES0_MEAS_CC2;
-
-	if (state[port].vconn_enabled) {
-		/* If VCONN enabled, measure cc_pin that matches polarity */
-		if (state[port].cc_polarity)
-			*cc2_lvl = measure_cc_pin_source(port, cc2_measure);
-		else
-			*cc1_lvl = measure_cc_pin_source(port, cc1_measure);
-	} else {
-		/* If VCONN not enabled, measure both cc1 and cc2 */
-		*cc1_lvl = measure_cc_pin_source(port, cc1_measure);
-		*cc2_lvl = measure_cc_pin_source(port, cc2_measure);
-	}
-}
-
 /* Determine cc pin state for sink */
 static void detect_cc_pin_sink(int port, enum tcpc_cc_voltage_status *cc1,
 			       enum tcpc_cc_voltage_status *cc2)
@@ -415,7 +334,7 @@ static int fusb302_tcpm_get_cc(int port, enum tcpc_cc_voltage_status *cc1,
 {
 	if (state[port].pulling_up) {
 		/* Source mode? */
-		detect_cc_pin_source_manual(port, cc1, cc2);
+		assert(0);/* [hide to reduce code size] detect_cc_pin_source_manual(port, cc1, cc2); */
 	} else {
 		/* Sink mode? */
 		detect_cc_pin_sink(port, cc1, cc2);
@@ -628,6 +547,70 @@ static int fusb302_rx_fifo_is_empty(int port)
 	       (reg & TCPC_REG_STATUS1_RX_EMPTY);
 }
 
+static int fusb302_tcpm_get_message_raw(int port, uint32_t *payload, int *head)
+{
+	/*
+	 * This is the buffer that will get the burst-read data
+	 * from the fusb302.
+	 *
+	 * It's re-used in a couple different spots, the worst of which
+	 * is the PD packet (not header) and CRC.
+	 * maximum size necessary = 28 + 4 = 32
+	 */
+	uint8_t buf[32];
+	int rv, len;
+
+	/* Read until we have a non-GoodCRC packet or an empty FIFO */
+	do {
+		buf[0] = TCPC_REG_FIFOS;
+		tcpc_lock(port, 1);
+
+		/*
+		 * PART 1 OF BURST READ: Write in register address.
+		 * Issue a START, no STOP.
+		 */
+		rv = tcpc_xfer_unlocked(port, buf, 1, 0, 0, I2C_XFER_START);
+
+		/*
+		 * PART 2 OF BURST READ: Read up to the header.
+		 * Issue a repeated START, no STOP.
+		 * only grab three bytes so we can get the header
+		 * and determine how many more bytes we need to read.
+		 * TODO: Check token to ensure valid packet.
+		 */
+		rv |= tcpc_xfer_unlocked(port, 0, 0, buf, 3, I2C_XFER_START);
+
+		/* Grab the header */
+		*head = (buf[1] & 0xFF);
+		*head |= ((buf[2] << 8) & 0xFF00);
+
+		/* figure out packet length, subtract header bytes */
+		len = get_num_bytes(*head) - 2;
+
+		/*
+		 * PART 3 OF BURST READ: Read everything else.
+		 * No START, but do issue a STOP at the end.
+		 * add 4 to len to read CRC out
+		 */
+		rv |= tcpc_xfer_unlocked(port, 0, 0, buf, len + 4,
+					 I2C_XFER_STOP);
+
+		tcpc_lock(port, 0);
+	} while (!rv && PACKET_IS_GOOD_CRC(*head) &&
+		 !fusb302_rx_fifo_is_empty(port));
+
+	if (!rv) {
+		/* Discard GoodCRC packets */
+		if (PACKET_IS_GOOD_CRC(*head))
+			rv = EC_ERROR_UNKNOWN;
+		else
+			memcpy(payload, buf, len);
+	}
+
+
+	return rv;
+}
+
 static int fusb302_tcpm_transmit(int port, enum tcpci_msg_type type,
 				 uint16_t header, const uint32_t *data)
 {
@@ -796,75 +779,6 @@ void fusb302_tcpc_alert(int port)
 	}
 }
 
-/* For BIST receiving */
-void tcpm_set_bist_test_data(int port)
-{
-	int reg;
-
-	/* Read control3 register */
-	tcpc_read(port, TCPC_REG_CONTROL3, &reg);
-
-	/* Set the BIST_TMODE bit (Clears on Hard Reset) */
-	reg |= TCPC_REG_CONTROL3_BIST_TMODE;
-
-	/* Write the updated value */
-	tcpc_write(port, TCPC_REG_CONTROL3, reg);
-}
-
-
-/*
- * Compare VBUS voltage with given mdac reference voltage.
- * returns non-zero if VBUS voltage >= (mdac + 1) * 420 mV
- */
-static int fusb302_compare_mdac(int port, int mdac)
-{
-	int orig_reg, status0;
-
-	mutex_lock(&measure_lock);
-
-	/* backup REG_MEASURE */
-	tcpc_read(port, TCPC_REG_MEASURE, &orig_reg);
-	/* set reg_measure bit 0~5 to mdac, and bit6 to 1(measure vbus) */
-	tcpc_write(port, TCPC_REG_MEASURE,
-		   (mdac & TCPC_REG_MEASURE_MDAC_MASK) | TCPC_REG_MEASURE_VBUS);
-
-	/* Wait on measurement */
-	usleep(350);
-
-	/*
-	 * Read status register, if STATUS0_COMP=1 then vbus is higher than
-	 * (mdac + 1) * 0.42V
-	 */
-	tcpc_read(port, TCPC_REG_STATUS0, &status0);
-	/* write back original value */
-	tcpc_write(port, TCPC_REG_MEASURE, orig_reg);
-
-	mutex_unlock(&measure_lock);
-
-	return status0 & TCPC_REG_STATUS0_COMP;
-}
-
-int fusb302_get_vbus_voltage(int port, int *vbus)
-{
-	int mdac = 0, i;
-
-	/*
-	 * Implement by comparing VBUS with MDAC reference voltage, and binary
-	 * search the value of MDAC.
-	 *
-	 * MDAC register has 6 bits, so we can simply search 1 bit per
-	 * iteration, from MSB to LSB.
-	 */
-	for (i = 5; i >= 0; i--) {
-		if (fusb302_compare_mdac(port, mdac | BIT(i)))
-			mdac |= BIT(i);
-	}
-
-	*vbus = (mdac + 1) * 420;
-
-	return EC_SUCCESS;
-}
-
 const struct tcpm_drv fusb302_tcpm_drv = {
 	.init = &fusb302_tcpm_init,
 	.release = NULL,
@@ -876,7 +790,7 @@ const struct tcpm_drv fusb302_tcpm_drv = {
 	.set_vconn = NULL,
 	.set_msg_header = &fusb302_tcpm_set_msg_header,
 	.set_rx_enable = &fusb302_tcpm_set_rx_enable,
-	.get_message_raw = NULL,
+	.get_message_raw = &fusb302_tcpm_get_message_raw,
 	.transmit = &fusb302_tcpm_transmit,
 	.tcpc_alert = &fusb302_tcpc_alert,
 };
