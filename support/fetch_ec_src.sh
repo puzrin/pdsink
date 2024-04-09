@@ -49,6 +49,8 @@ cp $CP_OPTS $EC_DIR/driver/tcpm/fusb302.h $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.h $SRC_DIR/driver
 
+cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
+
 #
 # Core patches
 #
@@ -62,3 +64,14 @@ spatch --sp-file $PATCHES_DIR/remove_pe_states.cocci $SRC_DIR/usb_pe_drp_sm.c --
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 #spatch --sp-file $PATCHES_DIR/remove_dead_branches.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
+
+#
+# Driver patches
+#
+unifdef $UNIFDEF_OPTS $SRC_DIR/driver/fusb302.c
+unifdef $UNIFDEF_OPTS $SRC_DIR/driver/stm32gx.c
+unifdef $UNIFDEF_OPTS $SRC_DIR/driver/tcpci.c
+
+$EVAL_MACRO $SRC_DIR/driver/fusb302.c $LIB_CONFIG
+$EVAL_MACRO $SRC_DIR/driver/stm32gx.c $LIB_CONFIG
+$EVAL_MACRO $SRC_DIR/driver/tcpci.c $LIB_CONFIG

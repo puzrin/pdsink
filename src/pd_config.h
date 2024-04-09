@@ -29,5 +29,16 @@
 // Seems we can't use this stuff, it's for console only.
 #undef CONFIG_USB_PD_PRL_EVENT_LOG
 
+// Drivers
+#undef CONFIG_USB_PD_VBUS_DETECT_TCPC
+#undef CONFIG_USB_PD_TCPC_LOW_POWER
+#undef CONFIG_USB_PD_DECODE_SOP
+// tcpci
+#undef CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE
+#undef CONFIG_USB_PD_TCPM_MUX
+#undef CONFIG_CMD_TCPC_DUMP
+#undef CONFIG_USB_PD_DISCHARGE_TCPC
+#undef CONFIG_USB_PD_FRS_TCPC
+
 // Other
 #undef CONFIG_ZEPHYR

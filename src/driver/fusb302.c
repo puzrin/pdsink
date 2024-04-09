@@ -413,12 +413,6 @@ static int fusb302_tcpm_init(int port)
 	reg &= ~TCPC_REG_MASK_COLLISION;
 	/* misc alert */
 	reg &= ~TCPC_REG_MASK_ALERT;
-#ifdef CONFIG_USB_PD_VBUS_DETECT_TCPC
-	/* TODO(crbug.com/791109): Clean up VBUS notification. */
-
-	/* VBUS threshold crossed (~4.0V) */
-	reg &= ~TCPC_REG_MASK_VBUSOK;
-#endif
 	tcpc_write(port, TCPC_REG_MASK, reg);
 
 	reg = 0xFF;
@@ -449,17 +443,6 @@ static int fusb302_tcpm_init(int port)
 	/* TODO: Reduce power consumption */
 	tcpc_write(port, TCPC_REG_POWER, TCPC_REG_POWER_PWR_ALL);
 
-#if defined(CONFIG_USB_PD_VBUS_DETECT_TCPC) && defined(CONFIG_USB_CHARGER)
-	/* Wait for the reference voltage to stablize */
-	usleep(250);
-	/*
-	 * Initialize VBUS supplier when VBUS is already present before
-	 * init (e.g. Cold reboot with charger plugged).
-	 */
-	tcpc_read(port, TCPC_REG_STATUS0, &reg);
-	if (reg & TCPC_REG_STATUS0_VBUSOK)
-		usb_charger_vbus_change(port, 1);
-#endif
 
 	return 0;
 }
@@ -641,7 +624,7 @@ static int fusb302_tcpm_set_vconn(int port, int enable)
 		/* set to saved polarity */
 		tcpm_set_polarity(port, state[port].cc_polarity);
 
-		if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)) {
+		if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
 			if (state[port].rx_enable) {
 				if (fusb302_tcpm_decode_sop_prime_enable(port,
 									 true))
@@ -657,7 +640,7 @@ static int fusb302_tcpm_set_vconn(int port, int enable)
 
 		tcpc_write(port, TCPC_REG_SWITCHES0, reg);
 
-		if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)) {
+		if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/) {
 			if (state[port].rx_enable) {
 				if (fusb302_tcpm_decode_sop_prime_enable(port,
 									 false))
@@ -735,19 +718,6 @@ static int fusb302_tcpm_set_rx_enable(int port, int enable)
 				   reg & ~TCPC_REG_MASK_BC_LVL);
 	}
 
-#ifdef CONFIG_USB_PD_DECODE_SOP
-	/*
-	 * Only the VCONN Source is allowed to communicate
-	 * with the Cable Plugs.
-	 */
-	if (state[port].vconn_enabled) {
-		if (tcpc_read(port, TCPC_REG_CONTROL1, &reg))
-			return EC_ERROR_UNKNOWN;
-
-		reg |= (TCPC_REG_CONTROL1_ENSOP1 | TCPC_REG_CONTROL1_ENSOP2);
-		tcpc_write(port, TCPC_REG_CONTROL1, reg);
-	}
-#endif
 
 	fusb302_auto_goodcrc_enable(port, enable);
 
@@ -823,19 +793,6 @@ static int fusb302_tcpm_get_message_raw(int port, uint32_t *payload, int *head)
 			memcpy(payload, buf, len);
 	}
 
-#ifdef CONFIG_USB_PD_DECODE_SOP
-	{
-		int reg;
-
-		if (tcpc_read(port, TCPC_REG_STATUS1, &reg))
-			return EC_ERROR_UNKNOWN;
-
-		if (reg & TCPC_REG_STATUS1_RXSOP1)
-			*head |= PD_HEADER_SOP(TCPCI_MSG_SOP_PRIME);
-		else if (reg & TCPC_REG_STATUS1_RXSOP2)
-			*head |= PD_HEADER_SOP(TCPCI_MSG_SOP_PRIME_PRIME);
-	}
-#endif
 
 	return rv;
 }
@@ -934,20 +891,6 @@ static int fusb302_tcpm_transmit(int port, enum tcpci_msg_type type,
 	return 0;
 }
 
-#ifdef CONFIG_USB_PD_VBUS_DETECT_TCPC
-static bool fusb302_tcpm_check_vbus_level(int port, enum vbus_level level)
-{
-	int reg;
-
-	/* Read status register */
-	tcpc_read(port, TCPC_REG_STATUS0, &reg);
-
-	if (level == VBUS_PRESENT)
-		return (reg & TCPC_REG_STATUS0_VBUSOK) ? 1 : 0;
-	else
-		return (reg & TCPC_REG_STATUS0_VBUSOK) ? 0 : 1;
-}
-#endif
 
 void fusb302_tcpc_alert(int port)
 {
@@ -979,20 +922,6 @@ void fusb302_tcpc_alert(int port)
 		pd_transmit_complete(port, TCPC_TX_COMPLETE_FAILED);
 	}
 
-#ifdef CONFIG_USB_PD_VBUS_DETECT_TCPC
-	if (interrupt & TCPC_REG_INTERRUPT_VBUSOK) {
-		/* VBUS crossed threshold */
-#ifdef CONFIG_USB_CHARGER
-		usb_charger_vbus_change(port, fusb302_tcpm_check_vbus_level(
-						      port, VBUS_PRESENT));
-#else
-		if (!fusb302_tcpm_check_vbus_level(port, VBUS_PRESENT))
-			pd_vbus_low(port);
-#endif
-		task_wake(PD_PORT_TO_TASK_ID(port));
-		hook_notify(HOOK_AC_CHANGE);
-	}
-#endif
 
 	/* GoodCRC was received, our FIFO is now non-empty */
 	if (interrupta & TCPC_REG_INTERRUPTA_TX_SUCCESS) {
@@ -1051,76 +980,6 @@ void tcpm_set_bist_test_data(int port)
 	tcpc_write(port, TCPC_REG_CONTROL3, reg);
 }
 
-#ifdef CONFIG_USB_PD_TCPC_LOW_POWER
-static int fusb302_set_toggle_mode(int port, int mode)
-{
-	int reg, rv;
-
-	rv = i2c_read8(tcpc_config[port].i2c_info.port,
-		       tcpc_config[port].i2c_info.addr_flags, TCPC_REG_CONTROL2,
-		       &reg);
-	if (rv)
-		return rv;
-
-	reg &= ~TCPC_REG_CONTROL2_MODE_MASK;
-	reg |= mode << TCPC_REG_CONTROL2_MODE_POS;
-	return i2c_write8(tcpc_config[port].i2c_info.port,
-			  tcpc_config[port].i2c_info.addr_flags,
-			  TCPC_REG_CONTROL2, reg);
-}
-
-static int fusb302_tcpm_enter_low_power_mode(int port)
-{
-	int reg, rv, mode = TCPC_REG_CONTROL2_MODE_DRP;
-
-	/**
-	 * vendor's suggested LPM flow:
-	 * - enable low power mode and set up other things
-	 * - sleep 250 us
-	 * - start toggling
-	 */
-	rv = i2c_write8(tcpc_config[port].i2c_info.port,
-			tcpc_config[port].i2c_info.addr_flags, TCPC_REG_POWER,
-			TCPC_REG_POWER_PWR_LOW);
-	if (rv)
-		return rv;
-
-	switch (pd_get_dual_role(port)) {
-	case PD_DRP_TOGGLE_ON:
-		mode = TCPC_REG_CONTROL2_MODE_DRP;
-		break;
-	case PD_DRP_TOGGLE_OFF:
-		mode = TCPC_REG_CONTROL2_MODE_UFP;
-		break;
-	case PD_DRP_FREEZE:
-		mode = pd_get_power_role(port) == PD_ROLE_SINK ?
-			       TCPC_REG_CONTROL2_MODE_UFP :
-			       TCPC_REG_CONTROL2_MODE_DFP;
-		break;
-	case PD_DRP_FORCE_SINK:
-		mode = TCPC_REG_CONTROL2_MODE_UFP;
-		break;
-	case PD_DRP_FORCE_SOURCE:
-		mode = TCPC_REG_CONTROL2_MODE_DFP;
-		break;
-	}
-	rv = fusb302_set_toggle_mode(port, mode);
-	if (rv)
-		return rv;
-
-	usleep(250);
-
-	rv = i2c_read8(tcpc_config[port].i2c_info.port,
-		       tcpc_config[port].i2c_info.addr_flags, TCPC_REG_CONTROL2,
-		       &reg);
-	if (rv)
-		return rv;
-	reg |= TCPC_REG_CONTROL2_TOGGLE;
-	return i2c_write8(tcpc_config[port].i2c_info.port,
-			  tcpc_config[port].i2c_info.addr_flags,
-			  TCPC_REG_CONTROL2, reg);
-}
-#endif
 
 /*
  * Compare VBUS voltage with given mdac reference voltage.
@@ -1179,23 +1038,14 @@ const struct tcpm_drv fusb302_tcpm_drv = {
 	.init = &fusb302_tcpm_init,
 	.release = &fusb302_tcpm_release,
 	.get_cc = &fusb302_tcpm_get_cc,
-#ifdef CONFIG_USB_PD_VBUS_DETECT_TCPC
-	.check_vbus_level = &fusb302_tcpm_check_vbus_level,
-#endif
 	.get_vbus_voltage = &fusb302_get_vbus_voltage,
 	.select_rp_value = &fusb302_tcpm_select_rp_value,
 	.set_cc = &fusb302_tcpm_set_cc,
 	.set_polarity = &fusb302_tcpm_set_polarity,
-#ifdef CONFIG_USB_PD_DECODE_SOP
-	.sop_prime_enable = &fusb302_tcpm_decode_sop_prime_enable,
-#endif
 	.set_vconn = &fusb302_tcpm_set_vconn,
 	.set_msg_header = &fusb302_tcpm_set_msg_header,
 	.set_rx_enable = &fusb302_tcpm_set_rx_enable,
 	.get_message_raw = &fusb302_tcpm_get_message_raw,
 	.transmit = &fusb302_tcpm_transmit,
 	.tcpc_alert = &fusb302_tcpc_alert,
-#ifdef CONFIG_USB_PD_TCPC_LOW_POWER
-	.enter_low_power_mode = &fusb302_tcpm_enter_low_power_mode,
-#endif
 };

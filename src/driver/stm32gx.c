@@ -26,9 +26,6 @@
  * same board which uses a TCPC that does have this feature. Therefore, this
  * config option is not considered an error.
  */
-#if defined(CONFIG_USB_PD_TCPC_LOW_POWER)
-#error "Unsupported config options of Stm32gx PD driver"
-#endif
 
 #define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)
 #define CPRINTS(format, args...) cprints(CC_USBPD, format, ##args)
@@ -85,7 +82,7 @@ static int stm32gx_tcpm_set_vconn(int port, int enable)
 {
 	stm32gx_ucpd_vconn_disc_rp(port, enable);
 
-	if (IS_ENABLED(CONFIG_USB_PD_DECODE_SOP))
+	if (0/*IS_ENABLED(CONFIG_USB_PD_DECODE_SOP)*/)
 		stm32gx_ucpd_sop_prime_enable(port, enable);
 
 	return EC_SUCCESS;
@@ -169,9 +166,6 @@ const struct tcpm_drv stm32gx_tcpm_drv = {
 	.select_rp_value = &stm32gx_tcpm_select_rp_value,
 	.set_cc = &stm32gx_tcpm_set_cc,
 	.set_polarity = &stm32gx_tcpm_set_polarity,
-#ifdef CONFIG_USB_PD_DECODE_SOP
-	.sop_prime_enable = &stm32gx_tcpm_sop_prime_enable,
-#endif
 	.set_vconn = &stm32gx_tcpm_set_vconn,
 	.set_msg_header = &stm32gx_tcpm_set_msg_header,
 	.set_rx_enable = &stm32gx_tcpm_set_rx_enable,
