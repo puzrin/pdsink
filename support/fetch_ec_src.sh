@@ -47,14 +47,14 @@ cp $CP_OPTS $EC_DIR/include/usb_tc_sm.h $INCLUDE_DIR
 
 cp $CP_OPTS $EC_DIR/driver/tcpm/fusb302.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/fusb302.h $SRC_DIR/driver
+cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
 
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.h $SRC_DIR/driver
-
-cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
-
-cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32.c $SRC_DIR/driver
-cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32_priv.h $SRC_DIR/driver
+cp $CP_OPTS $EC_DIR/chip/stm32/ucpd-stm32gx.c $SRC_DIR/driver
+cp $CP_OPTS $EC_DIR/chip/stm32/ucpd-stm32gx.h $SRC_DIR/driver
+#cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32.c $SRC_DIR/driver
+#cp $CP_OPTS $ZEPHYR_DIR/drivers/usb_c/tcpc/ucpd_stm32_priv.h $SRC_DIR/driver
 
 #
 # Core patches
@@ -79,22 +79,22 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/driver/tcpci.c
 
 $EVAL_MACRO $SRC_DIR/driver/fusb302.c $LIB_CONFIG
 $EVAL_MACRO $SRC_DIR/driver/tcpci.c $LIB_CONFIG
-$EVAL_MACRO $SRC_DIR/driver/ucpd_stm32.c $LIB_CONFIG
 $EVAL_MACRO $SRC_DIR/driver/stm32gx.c $LIB_CONFIG
+$EVAL_MACRO $SRC_DIR/driver/ucpd-stm32gx.c $LIB_CONFIG
 
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/fusb302.c --in-place
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/tcpci.c --in-place
-spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/ucpd_stm32.c --in-place
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/stm32gx.c --in-place
+spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/ucpd-stm32gx.c --in-place
 
 
 # 2 passes for nested deps unrolling
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/fusb302.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/tcpci.c --in-place
-spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/ucpd_stm32.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/stm32gx.c --in-place
+spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/ucpd-stm32gx.c --in-place
 
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/fusb302.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/tcpci.c --in-place
-spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/ucpd_stm32.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/stm32gx.c --in-place
+spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/driver/ucpd-stm32gx.c --in-place
