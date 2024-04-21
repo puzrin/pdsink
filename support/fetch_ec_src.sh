@@ -63,6 +63,9 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/usb_prl_sm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_dpm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 
+spatch --sp-file $PATCHES_DIR/remove_includes.cocci $SRC_DIR --in-place
+spatch --sp-file $PATCHES_DIR/remove_includes.cocci $INCLUDE_DIR/*.h --in-place
+
 #spatch --sp-file $PATCHES_DIR/is_enabled_expand.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 $EVAL_MACRO $SRC_DIR/usb_pe_drp_sm.c $LIB_CONFIG
 spatch --sp-file $PATCHES_DIR/remove_pe_states.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
