@@ -7,8 +7,6 @@
 
 #ifndef __CROS_EC_USB_PE_H
 #define __CROS_EC_USB_PE_H
-
-#include "usb_pd_tcpm.h"
 #include "usb_sm.h"
 
 /* Policy Engine Receive and Transmit Errors */

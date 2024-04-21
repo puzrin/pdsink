@@ -13,23 +13,14 @@
 
 #include "anx74xx.h"
 #include "atomic.h"
-#include "compile_time_macros.h"
-#include "console.h"
-#include "ec_commands.h"
-#include "hooks.h"
 #include "i2c.h"
 #include "ps8xxx.h"
-#include "task.h"
-#include "tcpm/tcpci.h"
-#include "tcpm/tcpm.h"
 #include "timer.h"
 #include "usb_charge.h"
 #include "usb_common.h"
-#include "usb_mux.h"
 #include "usb_pd.h"
 #include "usb_pd_flags.h"
 #include "usb_pd_tcpc.h"
-#include "usb_pd_tcpm.h"
 #include "util.h"
 
 #define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)

@@ -10,9 +10,7 @@
 #line 11
 
 #include "common.h"
-#include "console.h"
 #include "stdbool.h"
-#include "task.h"
 #include "usb_pd.h"
 #include "usb_sm.h"
 #include "util.h"

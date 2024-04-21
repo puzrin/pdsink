@@ -4,20 +4,11 @@
  *
  * Author: Gabe Noblesmith
  */
-
-/* Type-C port manager for Fairchild's FUSB302 */
-
-#include "console.h"
 #include "fusb302.h"
-#include "hooks.h"
-#include "task.h"
-#include "tcpm/tcpci.h"
-#include "tcpm/tcpm.h"
 #include "timer.h"
 #include "usb_charge.h"
 #include "usb_pd.h"
 #include "usb_pd_tcpc.h"
-#include "usb_pd_tcpm.h"
 #include "util.h"
 
 #if defined(CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE) || \

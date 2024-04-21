@@ -16,9 +16,6 @@
 
 #ifndef __CROS_EC_USB_DPM_H
 #define __CROS_EC_USB_DPM_H
-
-#include "ec_commands.h"
-#include "usb_pd_tcpm.h"
 #include "usb_sm.h"
 
 /**

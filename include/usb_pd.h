@@ -15,10 +15,6 @@
 #define __CROS_EC_USB_PD_H
 
 #include "common.h"
-#include "ec_commands.h"
-#include "usb_pd_tbt.h"
-#include "usb_pd_tcpm.h"
-#include "usb_pd_vdo.h"
 
 #include <stdbool.h>
 #include <stdint.h>

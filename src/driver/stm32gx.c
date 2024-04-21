@@ -8,16 +8,10 @@
 #include "chip/stm32/ucpd-stm32gx.h"
 #include "common.h"
 #include "config.h"
-#include "console.h"
-#include "hooks.h"
 #include "registers.h"
 #include "stm32gx.h"
-#include "system.h"
-#include "task.h"
-#include "tcpm/tcpci.h"
 #include "timer.h"
 #include "usb_pd.h"
-#include "usb_pd_tcpm.h"
 #include "util.h"
 
 /*

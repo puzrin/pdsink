@@ -2,38 +2,13 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
-/*
- * Device Policy Manager implementation
- * Refer to USB PD 3.0 spec, version 2.0, sections 8.2 and 8.3
- */
-
-#include "builtin/assert.h"
-#include "charge_state.h"
-#include "chipset.h"
-#include "compile_time_macros.h"
-#include "console.h"
-#include "ec_commands.h"
-#include "hooks.h"
-#include "power.h"
-#include "power_button.h"
 #include "queue.h"
-#include "system.h"
-#include "task.h"
-#include "tcpm/tcpm.h"
-#include "temp_sensor.h"
-#include "usb_dp_alt_mode.h"
-#include "usb_mode.h"
-#include "usb_mux.h"
 #include "usb_pd.h"
-#include "usb_pd_ap_vdm_control.h"
 #include "usb_pd_dpm_sm.h"
 #include "usb_pd_pdo.h"
 #include "usb_pd_policy.h"
-#include "usb_pd_tcpm.h"
 #include "usb_pd_timer.h"
 #include "usb_pe_sm.h"
-#include "usb_tbt_alt_mode.h"
 #include "usb_tc_sm.h"
 
 /*

@@ -10,7 +10,6 @@
 #include "common.h"
 #include "timer.h"
 #include "usb_pd.h"
-#include "usb_pd_tcpm.h"
 #include "usb_sm.h"
 
 /**

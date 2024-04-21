@@ -7,17 +7,13 @@
 
 #include "clock.h"
 #include "common.h"
-#include "console.h"
 #include "driver/tcpm/tcpm.h"
 #include "gpio.h"
-#include "hooks.h"
 #include "hwtimer.h"
 #include "registers.h"
-#include "task.h"
 #include "timer.h"
 #include "ucpd-stm32gx.h"
 #include "usb_pd.h"
-#include "usb_pd_tcpm.h"
 #include "util.h"
 
 #define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)

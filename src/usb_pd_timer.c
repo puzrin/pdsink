@@ -7,10 +7,8 @@
 #include "atomic.h"
 #include "atomic_bit.h"
 #include "common.h"
-#include "console.h"
 #include "limits.h"
 #include "math_util.h"
-#include "system.h"
 #include "usb_pd_timer.h"
 #include "usb_tc_sm.h"
 
