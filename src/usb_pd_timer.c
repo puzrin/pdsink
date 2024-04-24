@@ -104,7 +104,7 @@ static void pd_timer_inactive(int port, enum pd_task_timer timer)
 	if (PD_CHK_ACTIVE(port, timer)) {
 		PD_CLR_ACTIVE(port, timer);
 
-		if (IS_ENABLED(CONFIG_CMD_PD_TIMER))
+		if (0/*IS_ENABLED(CONFIG_CMD_PD_TIMER)*/)
 			count[port]--;
 	}
 	PD_CLR_DISABLED(port, timer);
@@ -125,7 +125,7 @@ static bool pd_timer_is_inactive(int port, enum pd_task_timer timer)
  */
 void pd_timer_init(int port)
 {
-	if (IS_ENABLED(CONFIG_CMD_PD_TIMER))
+	if (0/*IS_ENABLED(CONFIG_CMD_PD_TIMER)*/)
 		count[port] = 0;
 
 	/*
@@ -142,7 +142,7 @@ void pd_timer_enable(int port, enum pd_task_timer timer, uint32_t expires_us)
 	if (!PD_CHK_ACTIVE(port, timer)) {
 		PD_SET_ACTIVE(port, timer);
 
-		if (IS_ENABLED(CONFIG_CMD_PD_TIMER)) {
+		if (0/*IS_ENABLED(CONFIG_CMD_PD_TIMER)*/) {
 			count[port]++;
 			if (count[port] > max_count[port])
 				max_count[port] = count[port];
@@ -157,7 +157,7 @@ void pd_timer_disable(int port, enum pd_task_timer timer)
 	if (PD_CHK_ACTIVE(port, timer)) {
 		PD_CLR_ACTIVE(port, timer);
 
-		if (IS_ENABLED(CONFIG_CMD_PD_TIMER))
+		if (0/*IS_ENABLED(CONFIG_CMD_PD_TIMER)*/)
 			count[port]--;
 	}
 	PD_SET_DISABLED(port, timer);
@@ -249,32 +249,3 @@ int pd_timer_next_expiration(int port)
 	return ret_value;
 }
 
-#ifdef CONFIG_CMD_PD_TIMER
-test_mockable_static void pd_timer_dump(int port)
-{
-	int timer;
-	uint64_t now = get_time().val;
-
-	ccprints("Timers(%d): cur=%d max=%d", port, count[port],
-		 max_count[port]);
-
-	for (timer = 0; timer < PD_TIMER_COUNT; ++timer) {
-		if (pd_timer_is_disabled(port, timer)) {
-			continue;
-		} else if (pd_timer_is_active(port, timer)) {
-			uint32_t delta = 0;
-
-			if (now < timer_expires[port][timer])
-				delta = timer_expires[port][timer] - now;
-
-			ccprints("[%2d] Active:   %s (%d%s)", timer,
-				 pd_timer_names[timer], (uint32_t)delta,
-				 tc_event_loop_is_paused(port) ? "-PAUSED" :
-								 "");
-		} else {
-			ccprints("[%2d] Inactive: %s", timer,
-				 pd_timer_names[timer]);
-		}
-	}
-}
-#endif /* CONFIG_CMD_PD_TIMER */

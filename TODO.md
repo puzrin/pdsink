@@ -25,3 +25,6 @@ Driver's protothreads:
 - Scheduler re-enterance barrier for sure.
 
 
+usb_pd_timer:
+
+- Drop unused timers.

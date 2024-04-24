@@ -341,43 +341,5 @@ int pd_timer_next_expiration(int port);
  */
 void pd_timer_dump(int port);
 
-#ifdef TEST_BUILD
-/*****************************************************************************
- * TEST_BUILD section
- *
- * This is solely for the use of unit testing.  Most of the inner workings
- * of PD timer are internal static, so they have to be allowed access in
- * order to unit test the basics of the code.
- *
- * If you are interested in the workings of PD timers please refer to
- * common/usbc/usb_pd_timer.c
- */
-
-/* exported: number of USB-C ports */
-#define MAX_PD_PORTS CONFIG_USB_PD_PORT_MAX_COUNT
-
-/* PD timers have three possible states: Active, Inactive and Disabled */
-/* exported: timer_active indicates if a timer is currently active */
-extern ATOMIC_DEFINE(timer_active, PD_TIMER_COUNT *MAX_PD_PORTS);
-/* exported: timer_disabled indicates if a timer is currently disabled */
-extern ATOMIC_DEFINE(timer_disabled, PD_TIMER_COUNT *MAX_PD_PORTS);
-
-/* exported: set/clear/check the current timer_active for a timer */
-#define PD_SET_ACTIVE(p, bit) \
-	atomic_set_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
-#define PD_CLR_ACTIVE(p, bit) \
-	atomic_clear_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
-#define PD_CHK_ACTIVE(p, bit) \
-	atomic_test_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
-
-/* exported: set/clear/check the current timer_disabled for a timer */
-#define PD_SET_DISABLED(p, bit) \
-	atomic_set_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
-#define PD_CLR_DISABLED(p, bit) \
-	atomic_clear_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
-#define PD_CHK_DISABLED(p, bit) \
-	atomic_test_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
-
-#endif /* TEST_BUILD */
 
 #endif /* __CROS_EC_USB_PD_TIMER_H */

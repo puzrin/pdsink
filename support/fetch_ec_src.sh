@@ -7,7 +7,7 @@ PATCHES_DIR=$SCRIPT_DIR/patches
 SRC_DIR=$SCRIPT_DIR/../src
 INCLUDE_DIR=$SCRIPT_DIR/../include
 CP_OPTS=""
-LIB_CONFIG=$SRC_DIR/pd_config.h
+LIB_CONFIG=$SRC_DIR/portage/pd_portage_defines.h
 UNIFDEF_OPTS="-m -f $LIB_CONFIG"
 EVAL_MACRO=$SCRIPT_DIR/patches/eval_IS_ENABLED_macro.py
 
@@ -66,7 +66,14 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $SRC_DIR --in-place
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $INCLUDE_DIR/*.h --in-place
 
-#spatch --sp-file $PATCHES_DIR/is_enabled_expand.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
+# timer
+unifdef $UNIFDEF_OPTS -U TEST_BUILD $INCLUDE_DIR/usb_pd_timer.h
+unifdef $UNIFDEF_OPTS -U CONFIG_CMD_PD_TIMER $SRC_DIR/usb_pd_timer.c
+$EVAL_MACRO $SRC_DIR/usb_pd_timer.c $LIB_CONFIG
+spatch --sp-file $PATCHES_DIR/usb_pd_timer_h.cocci $INCLUDE_DIR/usb_pd_timer.h --in-place
+spatch --sp-file $PATCHES_DIR/usb_pd_timer_c.cocci $SRC_DIR/usb_pd_timer.c --in-place
+
+# policy engine
 $EVAL_MACRO $SRC_DIR/usb_pe_drp_sm.c $LIB_CONFIG
 spatch --sp-file $PATCHES_DIR/remove_pe_states.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
 spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.c --in-place
