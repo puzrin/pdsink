@@ -9,6 +9,8 @@
 
 #define CONFIG_USB_PD_EPR
 #define CONFIG_USB_PD_REV30
+#define CONFIG_USB_POWER_DELIVERY
+#define CONFIG_USB_PD_TCPMV2
 
 // This should be still ok for ERP, because required messages
 // are transferred in single chunk. But should be checked for sure.
@@ -38,9 +40,16 @@
 #undef CONFIG_CMD_TCPC_DUMP
 #undef CONFIG_USB_PD_DISCHARGE_TCPC
 #undef CONFIG_USB_PD_FRS_TCPC
+// usb_pd_tcpc
+#undef CONFIG_USB_VPD
+#undef CONFIG_USB_CTVPD
+#undef CONFIG_USB_PD_DUAL_ROLE
+#undef CONFIG_USB_PD_TCPC_TRACK_VBUS
 
 // Other
 #undef CONFIG_ZEPHYR
+#undef CONFIG_COMMON_RUNTIME
+#undef CONFIG_USB_PD_HOST_CMD
 
 // `usb_pd_timer` debug code
 #undef CONFIG_CMD_PD_TIMER

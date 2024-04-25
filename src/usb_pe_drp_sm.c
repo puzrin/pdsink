@@ -40,13 +40,8 @@
  * the USB Power Delivery Specification.
  */
 
-#ifdef CONFIG_COMMON_RUNTIME
-#define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)
-#define CPRINTS(format, args...) cprints(CC_USBPD, format, ##args)
-#else
 #define CPRINTF(format, args...)
 #define CPRINTS(format, args...)
-#endif
 
 #define CPRINTF_LX(x, format, args...)           \
 	do {                                     \
@@ -2235,7 +2230,7 @@ static void pe_snk_startup_entry(int port)
 	 * Swap, then the Policy Engine Shall do the following:
 	 * - Send a Get_Sink_Cap Message
 	 */
-	if (IS_ENABLED(CONFIG_USB_PD_HOST_CMD) || CONFIG_USB_PD_3A_PORTS > 0 ||
+	if (0/*IS_ENABLED(CONFIG_USB_PD_HOST_CMD)*/ || CONFIG_USB_PD_3A_PORTS > 0 ||
 	    0/*IS_ENABLED(CONFIG_USB_PD_FRS)*/)
 		pd_dpm_request(port, DPM_REQUEST_GET_SNK_CAPS);
 

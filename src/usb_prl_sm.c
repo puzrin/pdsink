@@ -22,13 +22,8 @@
 #include "util.h"
 #include "vpd_api.h"
 
-#ifdef CONFIG_COMMON_RUNTIME
-#define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)
-#define CPRINTS(format, args...) cprints(CC_USBPD, format, ##args)
-#else
 #define CPRINTF(format, args...)
 #define CPRINTS(format, args...)
-#endif
 
 /*
  * Define DEBUG_PRINT_FLAG_NAMES to print flag names when set and cleared.

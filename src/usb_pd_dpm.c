@@ -26,13 +26,8 @@ static enum debug_level dpm_debug_level = CONFIG_USB_PD_INITIAL_DEBUG_LEVEL;
 static enum debug_level dpm_debug_level = DEBUG_LEVEL_1;
 #endif
 
-#ifdef CONFIG_COMMON_RUNTIME
-#define CPRINTF(format, args...) cprintf(CC_USBPD, format, ##args)
-#define CPRINTS(format, args...) cprints(CC_USBPD, format, ##args)
-#else
 #define CPRINTF(format, args...)
 #define CPRINTS(format, args...)
-#endif
 
 static struct {
 	/* state machine context */
