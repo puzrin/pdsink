@@ -270,20 +270,6 @@ struct tcpm_drv {
 	 */
 	int (*set_polarity)(int port, enum tcpc_cc_polarity polarity);
 
-#ifdef CONFIG_USB_PD_DECODE_SOP
-	/**
-	 * Control receive of SOP' and SOP'' messages. This is provided
-	 * separately from set_vconn so that we can preemptively disable
-	 * receipt of SOP' messages during a VCONN swap, or disable during spans
-	 * when port partners may erroneously be sending cable messages.
-	 *
-	 * @param port Type-C port number
-	 * @param enable Enable SOP' and SOP'' messages
-	 *
-	 * @return EC_SUCCESS or error
-	 */
-	int (*sop_prime_enable)(int port, bool enable);
-#endif
 
 	/**
 	 * Set Vconn.
@@ -380,16 +366,6 @@ struct tcpm_drv {
 	 */
 	int (*debug_detach)(int port);
 
-#ifdef CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE
-	/**
-	 * Enable TCPC auto DRP toggling.
-	 *
-	 * @param port Type-C port number
-	 *
-	 * @return EC_SUCCESS or error
-	 */
-	int (*drp_toggle)(int port);
-#endif
 
 	/**
 	 * Get firmware version.
@@ -443,60 +419,8 @@ struct tcpm_drv {
 	 */
 	int (*set_src_ctrl)(int port, int enable);
 
-#ifdef CONFIG_USB_PD_TCPM_SBU
-	/*
-	 * Enable SBU lines.
-	 *
-	 * Some PD chips have integrated port protection for SBU lines and the
-	 * switches to enable the SBU lines coming out of the PD chips are
-	 * controlled by vendor specific registers. Hence, this function has to
-	 * be written in vendor specific driver code and the board specific
-	 * tcpc_config[] has to initialize the function with vendor specific
-	 * function at board level.
-	 *
-	 * @param port Type-C port number
-	 * @enable true for enable, false for disable
-	 *
-	 * @return EC_SUCCESS or error
-	 */
-	int (*set_sbu)(int port, bool enable);
-#endif /* CONFIG_USB_PD_TCPM_SBU */
 
-#ifdef CONFIG_USB_PD_TCPC_LOW_POWER
-	/**
-	 * Instructs the TCPC to enter into low power mode.
-	 *
-	 * NOTE: Do no use tcpc_(read|write) style helper methods in this
-	 * function. You must use i2c_(read|write) directly.
-	 *
-	 * @param port Type-C port number
-	 *
-	 * @return EC_SUCCESS or error
-	 */
-	int (*enter_low_power_mode)(int port);
 
-	/**
-	 * Starts I2C wake sequence for TCPC
-	 *
-	 * NOTE: Do no use tcpc_(read|write) style helper methods in this
-	 * function. You must use i2c_(read|write) directly.
-	 *
-	 * @param port Type-C port number
-	 */
-	void (*wake_low_power_mode)(int port);
-#endif
-
-#ifdef CONFIG_USB_PD_FRS
-	/**
-	 * Enable/Disable TCPC FRS detection
-	 *
-	 * @param port Type-C port number
-	 * @param enable FRS enable (true) disable (false)
-	 *
-	 * @return EC_SUCCESS or error
-	 */
-	int (*set_frs_enable)(int port, int enable);
-#endif
 
 	/**
 	 * Handle TCPCI Faults
@@ -542,14 +466,6 @@ struct tcpm_drv {
 	 * @return EC_SUCCESS or error code
 	 */
 	enum ec_error_list (*get_bist_test_mode)(int port, bool *enable);
-#ifdef CONFIG_CMD_TCPC_DUMP
-	/**
-	 * Dump TCPC registers
-	 *
-	 * @param port Type-C port number
-	 */
-	void (*dump_registers)(int port);
-#endif /* defined(CONFIG_CMD_TCPC_DUMP) */
 
 	int (*reset_bist_type_2)(int port);
 
@@ -566,11 +482,6 @@ struct tcpm_drv {
 #endif
 };
 
-#ifdef CONFIG_ZEPHYR
-
-#include "dt-bindings/usb_pd_tcpm.h"
-
-#else /* !CONFIG_ZEPHYR */
 
 /*
  * Macros for tcpc_config_t flags field.
@@ -596,7 +507,6 @@ struct tcpm_drv {
 #define TCPC_FLAGS_CONTROL_FRS BIT(7)
 #define TCPC_FLAGS_VBUS_MONITOR BIT(8)
 
-#endif /* !CONFIG_ZEPHYR */
 
 struct tcpc_config_t {
 	enum ec_bus_type bus_type; /* enum ec_bus_type */
@@ -688,30 +598,4 @@ int board_tcpc_post_init(int port) __attribute__((weak));
  */
 void board_pd_vconn_ctrl(int port, enum usbpd_cc_pin cc_pin, int enabled);
 
-#ifdef CONFIG_CMD_TCPC_DUMP
-struct tcpc_reg_dump_map {
-	uint8_t addr;
-	uint8_t size;
-	const char *name;
-};
-
-/**
- * Dump the standard TCPC registers.
- *
- * @param port Type-C port number
- *
- */
-void tcpc_dump_std_registers(int port);
-
-/**
- * Dump chip specific TCPC registers.
- *
- * @param port Type-C port number
- * @param pointer to table of registers and names
- * @param count of registers to dump
- *
- */
-void tcpc_dump_registers(int port, const struct tcpc_reg_dump_map *reg,
-			 int count);
-#endif
 #endif /* __CROS_EC_USB_PD_TCPM_H */

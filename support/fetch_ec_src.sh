@@ -35,6 +35,7 @@ cp $CP_OPTS $EC_DIR/include/compiler.h $SRC_DIR
 
 cp $CP_OPTS $EC_DIR/common/usb_pd_tcpc.c $SRC_DIR
 cp $CP_OPTS $EC_DIR/include/usb_pd_tcpm.h $INCLUDE_DIR
+cp $CP_OPTS $EC_DIR/include/usb_pd_tcpm.h $INCLUDE_DIR
 
 cp $CP_OPTS $EC_DIR/common/usbc/usb_sm.c $SRC_DIR
 cp $CP_OPTS $EC_DIR/include/usb_sm.h $INCLUDE_DIR
@@ -66,6 +67,7 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/usb_prl_sm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_dpm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_tcpc.c
+unifdef $UNIFDEF_OPTS $INCLUDE_DIR/usb_pd_tcpm.h
 
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $SRC_DIR --in-place
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $INCLUDE_DIR/*.h --in-place
