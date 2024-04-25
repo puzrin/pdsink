@@ -2,15 +2,12 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
-#include "assert.h"
-#include "atomic.h"
-#include "atomic_bit.h"
-#include "common.h"
-#include "limits.h"
-#include "math_util.h"
 #include "usb_pd_timer.h"
-#include "usb_tc_sm.h"
+#include "pd_config.h"
+#include <stdatomic.h>
+
+/* Workaround, since coccinelle can't patch ATOMIC_DEFINE lines directly */
+#define ATOMIC_DEFINE(VAR,SIZE) ATOMIC_BOOLS_DEFINE(VAR, SIZE)
 
 #define MAX_PD_PORTS CONFIG_USB_PD_PORT_MAX_COUNT
 #define MAX_PD_TIMERS PD_TIMER_COUNT
@@ -20,23 +17,17 @@
 #define NO_TIMEOUT (-1)
 #define EXPIRE_NOW (0)
 
-#define PD_SET_ACTIVE(p, bit) \
-	atomic_set_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
+#define PD_SET_ACTIVE(p,bit) atomic_store(&timer_active[(p) * PD_TIMER_COUNT + (bit)], true)
 
-#define PD_CLR_ACTIVE(p, bit) \
-	atomic_clear_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
+#define PD_CLR_ACTIVE(p,bit) atomic_store(&timer_active[(p) * PD_TIMER_COUNT + (bit)], false)
 
-#define PD_CHK_ACTIVE(p, bit) \
-	atomic_test_bit(timer_active, (p) * PD_TIMER_COUNT + (bit))
+#define PD_CHK_ACTIVE(p,bit) atomic_load(&timer_active[(p) * PD_TIMER_COUNT + (bit)])
 
-#define PD_SET_DISABLED(p, bit) \
-	atomic_set_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
+#define PD_SET_DISABLED(p,bit) atomic_store(&timer_disabled[(p) * PD_TIMER_COUNT + (bit)], true)
 
-#define PD_CLR_DISABLED(p, bit) \
-	atomic_clear_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
+#define PD_CLR_DISABLED(p,bit) atomic_store(&timer_disabled[(p) * PD_TIMER_COUNT + (bit)], false)
 
-#define PD_CHK_DISABLED(p, bit) \
-	atomic_test_bit(timer_disabled, (p) * PD_TIMER_COUNT + (bit))
+#define PD_CHK_DISABLED(p,bit) atomic_load(&timer_disabled[(p) * PD_TIMER_COUNT + (bit)])
 
 test_mockable_static ATOMIC_DEFINE(timer_active, PD_TIMER_COUNT *MAX_PD_PORTS);
 test_mockable_static ATOMIC_DEFINE(timer_disabled,

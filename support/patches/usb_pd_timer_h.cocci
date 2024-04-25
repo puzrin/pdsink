@@ -5,12 +5,12 @@
 - #include "atomic_bit.h"
 
 @@ @@
-- int pd_timer_next_expiration(int port);
-
-@@ @@
 #include <stdbool.h>
 + #include <stdint.h>
 
 @@ @@
-* #ifdef TEST_BUILD
+- int pd_timer_next_expiration(int port);
+
+@@ @@
+- void pd_timer_dump(int port);
 

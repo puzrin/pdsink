@@ -8,10 +8,8 @@
 #ifndef __CROS_EC_USB_PD_TIMER_H
 #define __CROS_EC_USB_PD_TIMER_H
 
-#include "atomic.h"
-#include "atomic_bit.h"
-
 #include <stdbool.h>
+#include <stdint.h>
 
 /*
  * List of all timers that will be managed by usb_pd_timer
@@ -322,24 +320,6 @@ bool pd_timer_is_expired(int port, enum pd_task_timer timer);
  * @param port USB-C port number
  */
 void pd_timer_manage_expired(int port);
-
-/*
- * pd_timer_next_expiration
- * Retrieve the next active expiration time
- *
- * @param port USB-C port number
- * @return >= 0 is the number of uSeconds until we should wake up.
- *	   -1 no pending timeout
- */
-int pd_timer_next_expiration(int port);
-
-/*
- * pd_timer_dump
- * Debug display of the timers for a given port
- *
- * @param port USB-C port number
- */
-void pd_timer_dump(int port);
 
 
 #endif /* __CROS_EC_USB_PD_TIMER_H */

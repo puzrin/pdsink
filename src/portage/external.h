@@ -3,6 +3,13 @@
 
 #include <stdint.h>
 
+#define __maybe_unused __attribute__((__unused__))
+#define test_mockable_static static
+#define __const_data
+//#define __const_data __attribute__((__section__(".rodata")))
+
+#define ATOMIC_BOOLS_DEFINE(VAR, SIZE) atomic_bool VAR[SIZE]
+
 /* Microsecond timestamp. */
 typedef union {
 	uint64_t val;
