@@ -11,11 +11,13 @@
 static atomic_flag is_running[MAX_PD_PORTS] = {[0 ... MAX_PD_PORTS - 1] = ATOMIC_FLAG_INIT};
 static atomic_flag deferred_call[MAX_PD_PORTS] = {[0 ... MAX_PD_PORTS - 1] = ATOMIC_FLAG_INIT};
 
+// Events storage
+static atomic_uint_fast32_t events[MAX_PD_PORTS] = {[0 ... MAX_PD_PORTS - 1] = 0};
 
 static void loop(int port)
 {
-	/* wait for next event/packet or timeout expiration */
-	const uint32_t evt = task_wait_event(pd_task_timeout(port));
+	/* pick available events */
+	const uint32_t evt = atomic_exchange(&events[port], 0);
 
 	/* Manage expired PD Timers on timeouts */
 	if (evt & TASK_EVENT_TIMER)
@@ -50,7 +52,7 @@ static void loop(int port)
  * NOTE: there is chance to call this every 0.1ms, to support good timeouts
  * resolution.
  */
-void pd_loop(int port) {
+static void pd_loop(int port) {
 	/* Wrapper to flatten nested invocations. Real logic is in `loop()` */
     bool should_run = false;
 
@@ -72,4 +74,21 @@ void pd_loop(int port) {
         }
 
     } while (should_run);
+}
+
+/*
+ * Send event to event loop handler.
+ */
+void pd_loop_set_event(int port, uint32_t event) {
+	atomic_fetch_or(&events[port], event);
+	pd_loop(port);
+}
+
+/*
+ * Timer interrupt handler. Propagate timer event to all ports.
+ */
+void pd_loop_handle_timer_interrupt() {
+	for (int port = 0; port < MAX_PD_PORTS; port++) {
+		pd_loop_set_event(port, TASK_EVENT_TIMER);
+	}
 }
