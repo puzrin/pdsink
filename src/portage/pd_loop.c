@@ -3,7 +3,7 @@
 #include <stdatomic.h>
 
 #include "src/pd_config.h"
-#include "src/portage/pd_event_loop.h"
+#include "src/portage/pd_loop.h"
 
 #define MAX_PD_PORTS CONFIG_USB_PD_PORT_MAX_COUNT
 
@@ -50,7 +50,7 @@ static void loop(int port)
  * NOTE: there is chance to call this every 0.1ms, to support good timeouts
  * resolution.
  */
-void pd_event_loop(int port) {
+void pd_loop(int port) {
 	/* Wrapper to flatten nested invocations. Real logic is in `loop()` */
     bool should_run = false;
 
