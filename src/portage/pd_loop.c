@@ -19,23 +19,10 @@ static void loop(int port)
 	/* pick available events */
 	const uint32_t evt = atomic_exchange(&events[port], 0);
 
-	/* Manage expired PD Timers on timeouts */
-	if (evt & TASK_EVENT_TIMER)
-		pd_timer_manage_expired(port);
+	if (evt & TASK_EVENT_TIMER) pd_timer_manage_expired(port);
 
-	/*
-	 * run port controller task to check CC and/or read incoming
-	 * messages
-	 */
-	tcpc_run(port, evt);
-
-	/* Run Device Policy Manager */
 	dpm_run(port, evt, tc_get_pd_enabled(port));
-
-	/* Run policy engine state machine */
 	pe_run(port, evt, tc_get_pd_enabled(port));
-
-	/* Run protocol state machine */
 	prl_run(port, evt, tc_get_pd_enabled(port));
 
 	return true;

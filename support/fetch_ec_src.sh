@@ -33,9 +33,10 @@ cp $CP_OPTS $EC_DIR/common/usbc/usb_pe_drp_sm.c $SRC_DIR
 
 cp $CP_OPTS $EC_DIR/include/compiler.h $SRC_DIR
 
-cp $CP_OPTS $EC_DIR/common/usb_pd_tcpc.c $SRC_DIR
+#cp $CP_OPTS $EC_DIR/common/usb_pd_tcpc.c $SRC_DIR
+#cp $CP_OPTS $EC_DIR/include/usb_pd_tcpc.h $INCLUDE_DIR
 cp $CP_OPTS $EC_DIR/include/usb_pd_tcpm.h $INCLUDE_DIR
-cp $CP_OPTS $EC_DIR/include/usb_pd_tcpm.h $INCLUDE_DIR
+cp $CP_OPTS $EC_DIR/include/driver/tcpm/tcpm.h $INCLUDE_DIR
 
 cp $CP_OPTS $EC_DIR/common/usbc/usb_sm.c $SRC_DIR
 cp $CP_OPTS $EC_DIR/include/usb_sm.h $INCLUDE_DIR
@@ -51,7 +52,7 @@ cp $CP_OPTS $EC_DIR/include/usb_tc_sm.h $INCLUDE_DIR
 
 cp $CP_OPTS $EC_DIR/driver/tcpm/fusb302.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/fusb302.h $SRC_DIR/driver
-cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
+#cp $CP_OPTS $EC_DIR/driver/tcpm/tcpci.c $SRC_DIR/driver
 
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.c $SRC_DIR/driver
 cp $CP_OPTS $EC_DIR/driver/tcpm/stm32gx.h $SRC_DIR/driver
@@ -67,7 +68,6 @@ unifdef $UNIFDEF_OPTS $SRC_DIR/usb_prl_sm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_dpm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pe_drp_sm.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/usb_pd_tcpc.c
-unifdef $UNIFDEF_OPTS $INCLUDE_DIR/usb_pd_tcpm.h
 
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $SRC_DIR --in-place
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $INCLUDE_DIR/*.h --in-place
@@ -95,15 +95,18 @@ spatch --sp-file $PATCHES_DIR/remove_unused_static.cocci $SRC_DIR/usb_pe_drp_sm.
 #
 unifdef $UNIFDEF_OPTS $SRC_DIR/driver/fusb302.c
 unifdef $UNIFDEF_OPTS $SRC_DIR/driver/stm32gx.c
-unifdef $UNIFDEF_OPTS $SRC_DIR/driver/tcpci.c
+#unifdef $UNIFDEF_OPTS $SRC_DIR/driver/tcpci.c
+#unifdef $UNIFDEF_OPTS $INCLUDE_DIR/usb_pd_tcpc.h
+unifdef $UNIFDEF_OPTS $INCLUDE_DIR/usb_pd_tcpm.h
+unifdef $UNIFDEF_OPTS $INCLUDE_DIR/tcpm.h
 
 $EVAL_MACRO $SRC_DIR/driver/fusb302.c $LIB_CONFIG
-$EVAL_MACRO $SRC_DIR/driver/tcpci.c $LIB_CONFIG
+#$EVAL_MACRO $SRC_DIR/driver/tcpci.c $LIB_CONFIG
 $EVAL_MACRO $SRC_DIR/driver/stm32gx.c $LIB_CONFIG
 $EVAL_MACRO $SRC_DIR/driver/ucpd-stm32gx.c $LIB_CONFIG
 
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/fusb302.c --in-place
-spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/tcpci.c --in-place
+#spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/tcpci.c --in-place
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/stm32gx.c --in-place
 spatch --sp-file $PATCHES_DIR/reduce_drv_interface.cocci $SRC_DIR/driver/ucpd-stm32gx.c --in-place
 
