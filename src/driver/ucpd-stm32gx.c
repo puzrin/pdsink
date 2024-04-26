@@ -1248,7 +1248,7 @@ static void stm32gx_ucpd1_irq(void)
 
 	/* Check for CC events, set event to wake PD task */
 	if (sr & (STM32_UCPD_SR_TYPECEVT1 | STM32_UCPD_SR_TYPECEVT2)) {
-		task_set_event(PD_PORT_TO_TASK_ID(port), PD_EVENT_CC);
+		pd_loop_set_event(port, PD_EVENT_CC);
 #ifdef CONFIG_STM32G4_UCPD_DEBUG
 		ucpd_sr_cc_event = sr;
 		hook_call_deferred(&ucpd_cc_change_notify_data, 0);
@@ -1356,7 +1356,7 @@ static void stm32gx_ucpd1_irq(void)
 	if (sr & STM32_UCPD_SR_RXHRSTDET) {
 		/* hard reset received */
 		pd_execute_hard_reset(port);
-		task_set_event(PD_PORT_TO_TASK_ID(port), TASK_EVENT_WAKE);
+		pd_loop_set_event(port, TASK_EVENT_WAKE);
 		hook_call_deferred(&ucpd_hard_reset_rx_log_data, 0);
 	}
 
@@ -1500,7 +1500,7 @@ static int command_ucpd(int argc, const char **argv)
 		/* Force reset of ucpd peripheral */
 		stm32gx_ucpd_init(port);
 		pd_execute_hard_reset(port);
-		task_set_event(PD_PORT_TO_TASK_ID(port), TASK_EVENT_WAKE);
+		pd_loop_set_event(port, TASK_EVENT_WAKE);
 	} else if (!strcasecmp(argv[1], "info")) {
 		ucpd_info(port);
 	} else if (!strcasecmp(argv[1], "bist")) {

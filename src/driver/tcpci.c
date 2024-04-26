@@ -630,7 +630,7 @@ int tcpm_enqueue_message(const int port)
 	atomic_add(&q->head, 1);
 
 	/* Wake PD task up so it can process incoming RX messages */
-	task_set_event(PD_PORT_TO_TASK_ID(port), TASK_EVENT_WAKE);
+	pd_loop_set_event(port, TASK_EVENT_WAKE);
 
 	return EC_SUCCESS;
 }
@@ -1095,7 +1095,7 @@ void tcpci_tcpc_alert(int port)
 	 * the next I2C transaction to the TCPC will cause it to wake again.
 	 */
 	if (pd_event)
-		task_set_event(PD_PORT_TO_TASK_ID(port), pd_event);
+		pd_loop_set_event(port, pd_event);
 }
 
 test_mockable int tcpci_get_vbus_voltage_no_check(int port, int *vbus)

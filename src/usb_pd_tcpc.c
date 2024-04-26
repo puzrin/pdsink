@@ -752,7 +752,7 @@ int tcpc_run(int port, int evt)
 
 void pd_rx_event(int port)
 {
-	task_set_event(PD_PORT_TO_TASK_ID(port), TASK_EVENT_WAKE);
+	pd_loop_set_event(port, TASK_EVENT_WAKE);
 }
 
 int tcpc_alert_status(int port, int *alert)

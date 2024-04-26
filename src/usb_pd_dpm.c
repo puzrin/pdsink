@@ -135,7 +135,7 @@ void pd_prepare_sysjump(void)
 			continue;
 
 		sysjump_task_waiting = task_get_current();
-		task_set_event(PD_PORT_TO_TASK_ID(i), PD_EVENT_SYSJUMP);
+		pd_loop_set_event(i, PD_EVENT_SYSJUMP);
 		task_wait_event_mask(TASK_EVENT_SYSJUMP_READY, -1);
 		sysjump_task_waiting = TASK_ID_INVALID;
 	}

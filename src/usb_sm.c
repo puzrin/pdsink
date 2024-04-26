@@ -171,7 +171,7 @@ void set_state(const int port, struct sm_ctx *const ctx,
 	 * delay important processing until the next task interval.
 	 */
 	if (IS_ENABLED(HAS_TASK_PD_C0))
-		task_wake(PD_PORT_TO_TASK_ID(port));
+		pd_loop_wake(port);
 }
 
 /*
