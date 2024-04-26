@@ -72,6 +72,10 @@ unifdef $UNIFDEF_OPTS $INCLUDE_DIR/usb_pd_tcpm.h
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $SRC_DIR --in-place
 spatch --sp-file $PATCHES_DIR/remove_includes.cocci $INCLUDE_DIR/*.h --in-place
 
+spatch --sp-file $PATCHES_DIR/task_to_loop.cocci $SRC_DIR --in-place
+spatch --sp-file $PATCHES_DIR/task_to_loop.cocci $INCLUDE_DIR/*.h --in-place
+perl -i -p0e 's/\/\*[\s\n]+\* Define PD_PORT_TO_TASK_ID\(\).*?#endif \/\* [^*]+ \*\///s' $INCLUDE_DIR/usb_pd.h
+
 # timer
 unifdef $UNIFDEF_OPTS -U TEST_BUILD $INCLUDE_DIR/usb_pd_timer.h
 unifdef $UNIFDEF_OPTS -U CONFIG_CMD_PD_TIMER $SRC_DIR/usb_pd_timer.c
