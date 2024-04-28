@@ -4,17 +4,123 @@
  *
  * Author: Gabe Noblesmith
  */
-#include "fusb302.h"
-#include "timer.h"
-#include "usb_charge.h"
+#include <stdatomic.h>
+#include <stdbool.h>
 #include "usb_pd.h"
-#include "usb_pd_tcpc.h"
-#include "util.h"
+#include "usb_pd_tcpm.h"
+#include "src/driver/fusb302.h"
+#include "timer.h"
+#include "src/pd_config.h"
+#include "src/portage/fusb302_i2c_drv.h"
 
-#if defined(CONFIG_USB_PD_DUAL_ROLE_AUTO_TOGGLE) || \
-	defined(CONFIG_USB_PD_DISCHARGE_TCPC)
-#error "Unsupported config options of fusb302 PD driver"
-#endif
+// TODO: care about initialization & `on_complete` setup.
+static fusb302_i2c_drv_t i2c_drv;
+
+// TODO: fix memory use of `PT_NWAIT` hashtable.
+#include "src/pt/protothread.h"
+#include "src/pt/protothread_sem.h"
+
+static atomic_flag is_running = ATOMIC_FLAG_INIT;
+static atomic_flag deferred_call = ATOMIC_FLAG_INIT;
+static state_t pt_scheduler_state = {0};
+
+void pt_schedule() {
+	bool should_run = false;
+
+	do {
+		if (atomic_flag_test_and_set(&is_running)) {
+			atomic_flag_test_and_set(&deferred_call);
+			return;
+		}
+
+		protothread_run(pt_scheduler_state);
+		// Dirty hack to to fetch missed state changes. Probably not required.
+		protothread_run(pt_scheduler_state);
+		protothread_run(pt_scheduler_state);
+
+		atomic_flag_clear(&is_running);
+
+		if (atomic_flag_test_and_set(&deferred_call)) {
+			atomic_flag_clear(&deferred_call);
+			should_run = true;
+		} else should_run = false;
+	} while (should_run);
+}
+
+/*
+ * Helper to wait for bool condition. Difference with `pt_wait()`:
+ * - Wait for simple boolean condition, instead of event
+ * - Thread does not sleep.
+ */
+#define pt_wait_cond(ctx, cond) while (!(cond)) { pt_yield(ctx); }
+
+/******************************************************************************/
+
+/*
+ *
+ * tcpc methods, adopted to protothreads
+ *
+ */
+
+// TODO: pin to driver
+static void i2c_on_complete() { pt_schedule(); }
+
+// Since tcpc methods are not nested, use shared context for simplicity.
+typedef struct {
+	pt_thread_t pt_thread;
+	pt_func_t pt_func;
+} pt_base_ctx_t;
+
+pt_base_ctx_t tcpc_ctx = {0};
+
+
+static pt_t tcpc_read(void const *env, int reg, int *val) {
+	pt_base_ctx_t *const ctx = env;
+	pt_resume(ctx);
+
+	i2c_drv.read(/* TODO: fixme */);
+	pt_wait_cond(ctx, i2c_drv.done());
+	return PT_DONE;
+}
+
+static pt_t tcpc_write(void const *env, int reg, int val) {
+	pt_base_ctx_t *const ctx = env;
+	pt_resume(ctx);
+
+	i2c_drv.write(/* TODO: fixme */);
+	pt_wait_cond(ctx, i2c_drv.done());
+	return PT_DONE;
+}
+
+// Sync methods, for init only, to simplify porting.
+static void tcpc_read_sync(int reg, int *val) {
+	i2c_drv.read(/* TODO: fixme */);
+	while (!i2c_drv.done()) delay(1);
+}
+void tcpc_write_sync(int reg, int val) {
+	i2c_drv.write(/* TODO: fixme */);
+	while (!i2c_drv.done()) delay(1);
+}
+
+// Value of interrupt pin.
+static bool tcpc_has_alert() {
+	// TODO: fixme
+}
+
+/*
+ * Guards to prohibit nested driver calls.
+ *
+ * NOTE:
+ *
+ * 1. This does not help with nesting the same method, but such restriction
+ *    looks acceptable.
+ * 2. This is invoked from flat event loop, atomic operations seems not required.
+ */
+volatile bool _tcpc_lock_flag = false;
+#define tcpc_lock(ctx) pt_wait_cond(ctx, !_tcpc_lock_flag); _tcpc_lock_flag = true;
+#define tcpc_unlock(ctx) _tcpc_lock_flag = false; pt_schedule();
+
+/******************************************************************************/
 
 #define PACKET_IS_GOOD_CRC(head) \
 	(PD_HEADER_TYPE(head) == PD_CTRL_GOOD_CRC && PD_HEADER_CNT(head) == 0)
@@ -29,42 +135,40 @@ static struct fusb302_chip_state {
 	uint8_t mdac_rd;
 } state[CONFIG_USB_PD_PORT_MAX_COUNT];
 
-static K_MUTEX_DEFINE(measure_lock);
-
 /*
  * Bring the FUSB302 out of reset after Hard Reset signaling. This will
  * automatically flush both the Rx and Tx FIFOs.
  */
-static void fusb302_pd_reset(int port)
+/*static void fusb302_pd_reset(int port)
 {
 	tcpc_write(port, TCPC_REG_RESET, TCPC_REG_RESET_PD_RESET);
-}
+}*/
 
 /*
  * Flush our Rx FIFO. To prevent packet framing issues, this function should
  * only be called when Rx is disabled.
  */
-static void fusb302_flush_rx_fifo(int port)
-{
+//static void fusb302_flush_rx_fifo(int port)
+//{
 	/*
 	 * other bits in the register _should_ be 0
 	 * until the day we support other SOP* types...
 	 * then we'll have to keep a shadow of what this register
 	 * value should be so we don't clobber it here!
 	 */
-	tcpc_write(port, TCPC_REG_CONTROL1, TCPC_REG_CONTROL1_RX_FLUSH);
-}
+//	tcpc_write(port, TCPC_REG_CONTROL1, TCPC_REG_CONTROL1_RX_FLUSH);
+//}
 
-static void fusb302_flush_tx_fifo(int port)
+/*static void fusb302_flush_tx_fifo(int port)
 {
 	int reg;
 
 	tcpc_read(port, TCPC_REG_CONTROL0, &reg);
 	reg |= TCPC_REG_CONTROL0_TX_FLUSH;
 	tcpc_write(port, TCPC_REG_CONTROL0, reg);
-}
+}*/
 
-static void fusb302_auto_goodcrc_enable(int port, int enable)
+/*static void fusb302_auto_goodcrc_enable(int port, int enable)
 {
 	int reg;
 
@@ -76,7 +180,7 @@ static void fusb302_auto_goodcrc_enable(int port, int enable)
 		reg &= ~TCPC_REG_SWITCHES1_AUTO_GCRC;
 
 	tcpc_write(port, TCPC_REG_SWITCHES1, reg);
-}
+}*/
 
 /* Convert BC LVL values (in FUSB302) to Type-C CC Voltage Status */
 static int convert_bc_lvl(int port, int bc_lvl)
@@ -457,23 +561,62 @@ static int fusb302_tcpm_set_polarity(int port, enum tcpc_cc_polarity polarity)
 	return 0;
 }
 
-static int fusb302_tcpm_set_msg_header(int port, int power_role, int data_role)
-{
-	int reg;
 
-	tcpc_read(port, TCPC_REG_SWITCHES1, &reg);
+
+typedef struct {
+	pt_thread_t pt_thread;
+	pt_func_t pt_func;
+	int port;
+	int power_role;
+	int data_role;
+} set_msg_header_ctx_t;
+
+// Use static alloc, since nested calls not allowed.
+static set_msg_header_ctx_t set_msg_header_ctx = {0};
+
+static int fusb302_tcpm_set_msg_header(int port, int power_role, int data_role) {
+	// Move params to thread context struct
+	set_msg_header_ctx.port = port;
+	set_msg_header_ctx.power_role = power_role;
+	set_msg_header_ctx.data_role = data_role;
+
+	pt_create(
+		&pt_scheduler_state,
+		&set_msg_header_ctx.pt_thread,
+		fusb302_tcpm_set_msg_header_pt,
+		&set_msg_header_ctx
+	);
+
+	pt_schedule();
+
+	return 0;
+}
+
+static pt_t fusb302_tcpm_set_msg_header_pt(void * const env)
+{
+	// Use static to keep var value between calls. Dirty but simple.
+	static int reg;
+
+	set_msg_header_ctx_t *const ctx = env;
+	pt_resume(ctx);
+
+	tcpc_lock(ctx);
+
+	pt_call(ctx, tcpc_read, &tcpc_ctx, TCPC_REG_SWITCHES1, &reg);
 
 	reg &= ~TCPC_REG_SWITCHES1_POWERROLE;
 	reg &= ~TCPC_REG_SWITCHES1_DATAROLE;
 
-	if (power_role)
+	if (ctx->power_role)
 		reg |= TCPC_REG_SWITCHES1_POWERROLE;
-	if (data_role)
+	if (ctx->data_role)
 		reg |= TCPC_REG_SWITCHES1_DATAROLE;
 
-	tcpc_write(port, TCPC_REG_SWITCHES1, reg);
+	pt_call(ctx, tcpc_write, &tcpc_ctx, TCPC_REG_SWITCHES1, reg);
 
-	return 0;
+	tcpc_unlock(ctx);
+
+	return PT_DONE;
 }
 
 static int fusb302_tcpm_set_rx_enable(int port, int enable)
@@ -512,7 +655,8 @@ static int fusb302_tcpm_set_rx_enable(int port, int enable)
 				   reg | TCPC_REG_MASK_BC_LVL);
 
 		/* flush rx fifo in case messages have been coming our way */
-		fusb302_flush_rx_fifo(port);
+		/*fusb302_flush_rx_fifo(port);*/
+		tcpc_write(port, TCPC_REG_CONTROL1, TCPC_REG_CONTROL1_RX_FLUSH);
 
 	} else {
 		tcpc_write(port, TCPC_REG_SWITCHES0, reg);
@@ -524,7 +668,11 @@ static int fusb302_tcpm_set_rx_enable(int port, int enable)
 	}
 
 
-	fusb302_auto_goodcrc_enable(port, enable);
+	/*fusb302_auto_goodcrc_enable(port, enable);*/
+	tcpc_read(port, TCPC_REG_SWITCHES1, &reg);
+	if (enable) reg |= TCPC_REG_SWITCHES1_AUTO_GCRC;
+	else reg &= ~TCPC_REG_SWITCHES1_AUTO_GCRC;
+	tcpc_write(port, TCPC_REG_SWITCHES1, reg);
 
 	return 0;
 }
@@ -625,7 +773,11 @@ static int fusb302_tcpm_transmit(int port, enum tcpci_msg_type type,
 	int reg;
 
 	/* Flush the TXFIFO */
-	fusb302_flush_tx_fifo(port);
+	/*fusb302_flush_tx_fifo(port);*/
+	tcpc_read(port, TCPC_REG_CONTROL0, &reg);
+	reg |= TCPC_REG_CONTROL0_TX_FLUSH;
+	tcpc_write(port, TCPC_REG_CONTROL0, reg);
+
 
 	switch (type) {
 	case TCPCI_MSG_SOP:
@@ -696,76 +848,101 @@ static int fusb302_tcpm_transmit(int port, enum tcpci_msg_type type,
 	return 0;
 }
 
+static bool has_alert = false;
 
-void fusb302_tcpc_alert(int port)
+// Interrupt handler.
+static void fusb302_tcpc_alert(int port)
 {
-	/* interrupt has been received */
-	int interrupt;
-	int interrupta;
-	int interruptb;
+	// Only signal to thread about data ready
+	has_alert = true;
+	pt_schedule();
+}
 
-	/* reading interrupt registers clears them */
+// Interrupt data processing thread
+static pt_t fusb302_tcpc_alert(void * const env)
+{
+	static int port = 0; // quick hack
+	pt_base_ctx_t *const ctx = env;
+	pt_resume(ctx);
 
-	tcpc_read(port, TCPC_REG_INTERRUPT, &interrupt);
-	tcpc_read(port, TCPC_REG_INTERRUPTA, &interrupta);
-	tcpc_read(port, TCPC_REG_INTERRUPTB, &interruptb);
+	while (1) {
+		// Wait for interrupt signal AND (?) check pin for sure
+		pt_wait_cond(ctx, has_alert || tcpc_has_alert());
+		has_alert = false;
 
-	/*
-	 * Ignore BC_LVL changes when transmitting / receiving PD,
-	 * since CC level will constantly change.
-	 */
-	if (state[port].rx_enable)
-		interrupt &= ~TCPC_REG_INTERRUPT_BC_LVL;
+		/* interrupt has been received */
+		static int interrupt;
+		static int interrupta;
+		static int interruptb;
 
-	if (interrupt & TCPC_REG_INTERRUPT_BC_LVL) {
-		/* CC Status change */
-		pd_loop_set_event(port, PD_EVENT_CC);
-	}
+		/* reading interrupt registers clears them */
 
-	if (interrupt & TCPC_REG_INTERRUPT_COLLISION) {
-		/* packet sending collided */
-		pd_transmit_complete(port, TCPC_TX_COMPLETE_FAILED);
-	}
+		pt_call(ctx, tcpc_read, &tcpc_ctx, TCPC_REG_INTERRUPT, &interrupt);
+		pt_call(ctx, tcpc_read, &tcpc_ctx, TCPC_REG_INTERRUPTA, &interrupta);
+		pt_call(ctx, tcpc_read, &tcpc_ctx, TCPC_REG_INTERRUPTB, &interruptb);
 
+		/*
+		* Ignore BC_LVL changes when transmitting / receiving PD,
+		* since CC level will constantly change.
+		*/
+		if (state[port].rx_enable)
+			interrupt &= ~TCPC_REG_INTERRUPT_BC_LVL;
 
-	/* GoodCRC was received, our FIFO is now non-empty */
-	if (interrupta & TCPC_REG_INTERRUPTA_TX_SUCCESS) {
-		pd_transmit_complete(port, TCPC_TX_COMPLETE_SUCCESS);
-	}
-
-	if (interrupta & TCPC_REG_INTERRUPTA_RETRYFAIL) {
-		/* all retries have failed to get a GoodCRC */
-		pd_transmit_complete(port, TCPC_TX_COMPLETE_FAILED);
-	}
-
-	if (interrupta & TCPC_REG_INTERRUPTA_HARDSENT) {
-		/* hard reset has been sent */
-
-		/* bring FUSB302 out of reset */
-		fusb302_pd_reset(port);
-
-		pd_transmit_complete(port, TCPC_TX_COMPLETE_SUCCESS);
-	}
-
-	if (interrupta & TCPC_REG_INTERRUPTA_HARDRESET) {
-		/* hard reset has been received */
-
-		/* bring FUSB302 out of reset */
-		fusb302_pd_reset(port);
-		pd_loop_set_event(port, PD_EVENT_RX_HARD_RESET);
-	}
-
-	if (interruptb & TCPC_REG_INTERRUPTB_GCRCSENT) {
-		/* Packet received and GoodCRC sent */
-		/* (this interrupt fires after the GoodCRC finishes) */
-		if (state[port].rx_enable) {
-			/* Pull all RX messages from TCPC into EC memory */
-			while (!fusb302_rx_fifo_is_empty(port))
-				tcpm_enqueue_message(port);
-		} else {
-			/* flush rx fifo if rx isn't enabled */
-			fusb302_flush_rx_fifo(port);
+		if (interrupt & TCPC_REG_INTERRUPT_BC_LVL) {
+			/* CC Status change */
+			pd_loop_set_event(port, PD_EVENT_CC);
 		}
+
+		if (interrupt & TCPC_REG_INTERRUPT_COLLISION) {
+			/* packet sending collided */
+			pd_transmit_complete(port, TCPC_TX_COMPLETE_FAILED);
+		}
+
+
+		/* GoodCRC was received, our FIFO is now non-empty */
+		if (interrupta & TCPC_REG_INTERRUPTA_TX_SUCCESS) {
+			pd_transmit_complete(port, TCPC_TX_COMPLETE_SUCCESS);
+		}
+
+		if (interrupta & TCPC_REG_INTERRUPTA_RETRYFAIL) {
+			/* all retries have failed to get a GoodCRC */
+			pd_transmit_complete(port, TCPC_TX_COMPLETE_FAILED);
+		}
+
+		if (interrupta & TCPC_REG_INTERRUPTA_HARDSENT) {
+			/* hard reset has been sent */
+
+			/* bring FUSB302 out of reset */
+			/*fusb302_pd_reset(port);*/
+			pt_call(ctx, tcpc_write, &tcpc_ctx, TCPC_REG_RESET, TCPC_REG_RESET_PD_RESET);
+			pd_transmit_complete(port, TCPC_TX_COMPLETE_SUCCESS);
+		}
+
+		if (interrupta & TCPC_REG_INTERRUPTA_HARDRESET) {
+			/* hard reset has been received */
+
+			/* bring FUSB302 out of reset */
+			/*fusb302_pd_reset(port);*/
+			pt_call(ctx, tcpc_write, &tcpc_ctx, TCPC_REG_RESET, TCPC_REG_RESET_PD_RESET);
+			pd_loop_set_event(port, PD_EVENT_RX_HARD_RESET);
+		}
+
+		if (interruptb & TCPC_REG_INTERRUPTB_GCRCSENT) {
+			/* Packet received and GoodCRC sent */
+			/* (this interrupt fires after the GoodCRC finishes) */
+			if (state[port].rx_enable) {
+				/* Pull all RX messages from TCPC into EC memory */
+				// TODO: fixme
+				while (!fusb302_rx_fifo_is_empty(port))
+					tcpm_enqueue_message(port);
+			} else {
+				/* flush rx fifo if rx isn't enabled */
+				/*fusb302_flush_rx_fifo(port);*/
+				pt_call(ctx, tcpc_write, &tcpc_ctx, TCPC_REG_CONTROL1, TCPC_REG_CONTROL1_RX_FLUSH);
+			}
+		}
+
+		tcpc_unlock(ctx);
 	}
 }
 
